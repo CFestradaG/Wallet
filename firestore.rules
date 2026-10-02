@@ -28,8 +28,8 @@ service cloud.firestore {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    function isValidYearMonth(ym) {
-      return ym is string && ym.size() == 7 && ym.matches('^[0-9]{4}_[0-9]{2}$');
+    function isValidPeriodId(pid) {
+      return pid is string && pid.size() >= 7 && pid.size() <= 20 && pid.matches('^(period_)?[0-9]{4}[_-][0-9]{2}$');
     }
 
     function isValidCurrency(curr) {
@@ -43,23 +43,31 @@ service cloud.firestore {
     // 3. Entity Validation Blueprints
     function isValidUserProfile(data) {
       return data.keys().hasAll(['userId', 'displayName', 'defaultCurrency', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['userId', 'displayName', 'defaultCurrency', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'userId', 'displayName', 'defaultCurrency',
+          'startDayOfMonth', 'enableSplitPeriod', 'midMonthDay',
+          'createdAt', 'updatedAt'
+        ])
         && isValidId(data.userId)
         && data.userId == request.auth.uid
         && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
         && isValidCurrency(data.defaultCurrency)
+        && (!('startDayOfMonth' in data) || (data.startDayOfMonth is number && data.startDayOfMonth >= 1 && data.startDayOfMonth <= 31))
+        && (!('enableSplitPeriod' in data) || data.enableSplitPeriod is bool)
+        && (!('midMonthDay' in data) || (data.midMonthDay is number && data.midMonthDay >= 1 && data.midMonthDay <= 31))
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
 
     function isValidAccount(data) {
       return data.keys().hasAll(['userId', 'name', 'type', 'balance', 'currency', 'colorHex', 'iconName', 'subtitle', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['userId', 'name', 'type', 'balance', 'currency', 'colorHex', 'iconName', 'subtitle', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'name', 'type', 'balance', 'currentBalance', 'currency', 'colorHex', 'iconName', 'subtitle', 'createdAt', 'updatedAt'])
         && isValidId(data.userId)
         && data.userId == request.auth.uid
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
         && data.type is string && data.type.size() <= 20 && data.type in ['cash', 'bank', 'credit_card', 'savings', 'investment']
         && data.balance is number
+        && (!('currentBalance' in data) || data.currentBalance is number)
         && isValidCurrency(data.currency)
         && data.colorHex is string && data.colorHex.size() >= 4 && data.colorHex.size() <= 9
         && data.iconName is string && data.iconName.size() >= 1 && data.iconName.size() <= 40
@@ -75,14 +83,17 @@ service cloud.firestore {
           'note', 'dateIso', 'yearMonth', 'createdAt', 'updatedAt'
         ])
         && data.keys().hasOnly([
-          'userId', 'accountId', 'accountName', 'categoryId', 'categoryName',
-          'categoryIcon', 'categoryColor', 'type', 'amount', 'currency',
-          'note', 'dateIso', 'yearMonth', 'createdAt', 'updatedAt'
+          'userId', 'accountId', 'accountName', 'toAccountId', 'toAccountName',
+          'categoryId', 'categoryName', 'categoryIcon', 'categoryColor',
+          'type', 'amount', 'currency', 'note', 'dateIso',
+          'yearMonth', 'periodId', 'createdAt', 'updatedAt'
         ])
         && isValidId(data.userId)
         && data.userId == request.auth.uid
         && isValidId(data.accountId)
         && data.accountName is string && data.accountName.size() >= 1 && data.accountName.size() <= 80
+        && (!('toAccountId' in data) || isValidId(data.toAccountId))
+        && (!('toAccountName' in data) || (data.toAccountName is string && data.toAccountName.size() >= 1 && data.toAccountName.size() <= 80))
         && isValidId(data.categoryId)
         && data.categoryName is string && data.categoryName.size() >= 1 && data.categoryName.size() <= 80
         && data.categoryIcon is string && data.categoryIcon.size() >= 1 && data.categoryIcon.size() <= 40
@@ -92,7 +103,8 @@ service cloud.firestore {
         && isValidCurrency(data.currency)
         && data.note is string && data.note.size() >= 1 && data.note.size() <= 200
         && data.dateIso is string && data.dateIso.size() >= 10 && data.dateIso.size() <= 40
-        && isValidYearMonth(data.yearMonth)
+        && isValidPeriodId(data.yearMonth)
+        && (!('periodId' in data) || isValidPeriodId(data.periodId))
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -127,7 +139,7 @@ service cloud.firestore {
         && data.limitAmount is number && data.limitAmount > 0
         && data.spentAmount is number && data.spentAmount >= 0
         && isValidCurrency(data.currency)
-        && isValidYearMonth(data.period)
+        && isValidPeriodId(data.period)
         && data.iconName is string && data.iconName.size() >= 1 && data.iconName.size() <= 40
         && data.colorHex is string && data.colorHex.size() >= 4 && data.colorHex.size() <= 9
         && data.createdAt is timestamp
@@ -140,12 +152,13 @@ service cloud.firestore {
           'netCashFlow', 'savingsRate', 'currency', 'createdAt', 'updatedAt'
         ])
         && data.keys().hasOnly([
-          'userId', 'yearMonth', 'totalIncome', 'totalExpense',
+          'userId', 'yearMonth', 'periodId', 'totalIncome', 'totalExpense',
           'netCashFlow', 'savingsRate', 'currency', 'createdAt', 'updatedAt'
         ])
         && isValidId(data.userId)
         && data.userId == request.auth.uid
-        && isValidYearMonth(data.yearMonth)
+        && isValidPeriodId(data.yearMonth)
+        && (!('periodId' in data) || isValidPeriodId(data.periodId))
         && data.totalIncome is number && data.totalIncome >= 0
         && data.totalExpense is number && data.totalExpense >= 0
         && data.netCashFlow is number
@@ -169,7 +182,11 @@ service cloud.firestore {
         && incoming().userId == existing().userId
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
-        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'defaultCurrency', 'updatedAt']);
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'defaultCurrency',
+          'startDayOfMonth', 'enableSplitPeriod', 'midMonthDay',
+          'updatedAt'
+        ]);
 
       // Subcollection: /users/{userId}/accounts/{accountId}
       match /accounts/{accountId} {
@@ -189,7 +206,7 @@ service cloud.firestore {
           && incoming().userId == existing().userId
           && incoming().createdAt == existing().createdAt
           && incoming().updatedAt == request.time
-          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'type', 'balance', 'currency', 'colorHex', 'iconName', 'subtitle', 'updatedAt'])
+          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'type', 'balance', 'currentBalance', 'currency', 'colorHex', 'iconName', 'subtitle', 'updatedAt'])
           && userExists(userId);
         allow delete: if isOwner(userId) && isValidId(userId) && isValidId(accountId) && userExists(userId);
       }
@@ -214,9 +231,10 @@ service cloud.firestore {
           && incoming().createdAt == existing().createdAt
           && incoming().updatedAt == request.time
           && incoming().diff(existing()).affectedKeys().hasOnly([
-            'accountId', 'accountName', 'categoryId', 'categoryName',
-            'categoryIcon', 'categoryColor', 'type', 'amount', 'currency',
-            'note', 'dateIso', 'yearMonth', 'updatedAt'
+            'accountId', 'accountName', 'toAccountId', 'toAccountName',
+            'categoryId', 'categoryName', 'categoryIcon', 'categoryColor',
+            'type', 'amount', 'currency', 'note', 'dateIso',
+            'yearMonth', 'periodId', 'updatedAt'
           ])
           && userExists(userId);
         allow delete: if isOwner(userId) && isValidId(userId) && isValidId(transactionId) && userExists(userId);
@@ -268,29 +286,27 @@ service cloud.firestore {
         allow delete: if isOwner(userId) && isValidId(userId) && isValidId(budgetId) && userExists(userId);
       }
 
-      // Subcollection: /users/{userId}/summaries/{year_month}
-      match /summaries/{year_month} {
-        allow get: if isOwner(userId) && isValidId(userId) && isValidYearMonth(year_month) && userExists(userId);
+      // Subcollection: /users/{userId}/summaries/{periodId}
+      match /summaries/{periodId} {
+        allow get: if isOwner(userId) && isValidId(userId) && isValidPeriodId(periodId) && userExists(userId);
         allow list: if isOwner(userId) && resource.data.userId == request.auth.uid;
         allow create: if isOwner(userId)
           && isValidId(userId)
-          && isValidYearMonth(year_month)
+          && isValidPeriodId(periodId)
           && isValidMonthlySummary(incoming())
-          && incoming().yearMonth == year_month
           && incoming().createdAt == request.time
           && incoming().updatedAt == request.time
           && userExists(userId);
         allow update: if isOwner(userId)
           && isValidId(userId)
-          && isValidYearMonth(year_month)
+          && isValidPeriodId(periodId)
           && isValidMonthlySummary(incoming())
           && incoming().userId == existing().userId
-          && incoming().yearMonth == existing().yearMonth
           && incoming().createdAt == existing().createdAt
           && incoming().updatedAt == request.time
-          && incoming().diff(existing()).affectedKeys().hasOnly(['totalIncome', 'totalExpense', 'netCashFlow', 'savingsRate', 'currency', 'updatedAt'])
+          && incoming().diff(existing()).affectedKeys().hasOnly(['yearMonth', 'periodId', 'totalIncome', 'totalExpense', 'netCashFlow', 'savingsRate', 'currency', 'updatedAt'])
           && userExists(userId);
-        allow delete: if isOwner(userId) && isValidId(userId) && isValidYearMonth(year_month) && userExists(userId);
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidPeriodId(periodId) && userExists(userId);
       }
     }
   }

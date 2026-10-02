@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Check,
@@ -15,11 +15,12 @@ import {
   Delete,
   Bookmark,
   ChevronDown,
-  ChevronRight,
+  ArrowRight,
 } from 'lucide-react';
 import {
   WalletAccount,
   WalletCategory,
+  WalletTransaction,
   TransactionType,
 } from '../types/wallet';
 
@@ -29,10 +30,13 @@ interface NewTransactionModalProps {
   accounts: WalletAccount[];
   categories: WalletCategory[];
   initialType?: TransactionType;
+  editingTransaction?: WalletTransaction | null;
   onSaveTransaction: (data: {
+    id?: string;
     type: TransactionType;
     amount: number;
     accountId: string;
+    toAccountId?: string;
     categoryId: string;
     note: string;
     dateIso: string;
@@ -53,6 +57,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
   accounts,
   categories,
   initialType = 'expense',
+  editingTransaction = null,
   onSaveTransaction,
 }) => {
   const [txType, setTxType] = useState<TransactionType>(initialType);
@@ -61,18 +66,63 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
   const [selectedAccountId, setSelectedAccountId] = useState<string>(
     accounts[0]?.id || 'acc_efectivo'
   );
+  const [selectedToAccountId, setSelectedToAccountId] = useState<string>(
+    accounts[1]?.id || 'acc_bac'
+  );
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
     categories[0]?.id || 'cat_comida'
   );
   const [note, setNote] = useState<string>('');
+  const [txDateIso, setTxDateIso] = useState<string>(() =>
+    new Date('2026-10-28T12:00:00.000Z').toISOString().slice(0, 10)
+  );
   const [showTemplates, setShowTemplates] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setErrorMsg(null);
+    if (editingTransaction) {
+      setTxType(editingTransaction.type);
+      setExpression(editingTransaction.amount.toFixed(2));
+      setIsDefaultVal(false);
+      setSelectedAccountId(editingTransaction.accountId);
+      setSelectedToAccountId(
+        editingTransaction.toAccountId ||
+          accounts.find((a) => a.id !== editingTransaction.accountId)?.id ||
+          accounts[0]?.id ||
+          'acc_bac'
+      );
+      setSelectedCategoryId(editingTransaction.categoryId);
+      setNote(editingTransaction.note);
+      setTxDateIso(editingTransaction.dateIso.slice(0, 10));
+    } else {
+      setTxType(initialType);
+      setExpression('150.00');
+      setIsDefaultVal(true);
+      setSelectedAccountId(accounts[0]?.id || 'acc_efectivo');
+      setSelectedToAccountId(
+        accounts[1]?.id || accounts[0]?.id || 'acc_bac'
+      );
+      const defaultCat = categories.find((c) =>
+        initialType === 'income' ? c.type === 'income' : c.type === 'expense'
+      );
+      setSelectedCategoryId(defaultCat?.id || categories[0]?.id || 'cat_comida');
+      setNote('');
+      setTxDateIso('2026-10-28');
+    }
+  }, [isOpen, editingTransaction, initialType, accounts, categories]);
 
   if (!isOpen) return null;
 
   const activeAccount =
     accounts.find((a) => a.id === selectedAccountId) || accounts[0];
+  const activeToAccount =
+    accounts.find((a) => a.id === selectedToAccountId) ||
+    accounts.find((a) => a.id !== activeAccount?.id) ||
+    accounts[0];
+
   const filteredCategories = categories.filter((c) =>
     txType === 'income' ? c.type === 'income' : c.type === 'expense'
   );
@@ -87,7 +137,6 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
       if (!sanitized) return 0;
       const cleanEnd = sanitized.replace(/[+\-*/.]$/, '');
       if (!cleanEnd) return 0;
-      // Safe arithmetic evaluation
       const tokens = cleanEnd.split(/([+\-*/])/).filter(Boolean);
       let current = parseFloat(tokens[0]) || 0;
       for (let i = 1; i < tokens.length; i += 2) {
@@ -161,17 +210,33 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
       setErrorMsg('Selecciona una cuenta y categoría válidas');
       return;
     }
+    if (
+      txType === 'transfer' &&
+      (!activeToAccount || activeToAccount.id === activeAccount.id)
+    ) {
+      setErrorMsg(
+        'Para una transferencia, selecciona una cuenta destino distinta a la cuenta origen'
+      );
+      return;
+    }
 
     setIsSaving(true);
     setErrorMsg(null);
     try {
+      const fullDateIso = new Date(`${txDateIso}T12:00:00.000Z`).toISOString();
       await onSaveTransaction({
+        id: editingTransaction?.id,
         type: txType,
         amount: evaluatedAmount,
         accountId: activeAccount.id,
+        toAccountId: txType === 'transfer' ? activeToAccount?.id : undefined,
         categoryId: activeCategory.id,
-        note: note.trim() || `${activeCategory.name} · ${activeAccount.name}`,
-        dateIso: new Date().toISOString(),
+        note:
+          note.trim() ||
+          (txType === 'transfer'
+            ? `Transferencia: ${activeAccount.name} → ${activeToAccount?.name}`
+            : `${activeCategory.name} · ${activeAccount.name}`),
+        dateIso: fullDateIso,
       });
       onClose();
     } catch (err) {
@@ -227,7 +292,9 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
               <X className="w-6 h-6" />
             </button>
             <span className="text-xs font-bold tracking-widest uppercase">
-              Nueva Transacción
+              {editingTransaction
+                ? 'Editar Transacción (Atómica)'
+                : 'Nueva Transacción'}
             </span>
             <button
               type="button"
@@ -274,7 +341,15 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setTxType('transfer')}
+              onClick={() => {
+                setTxType('transfer');
+                if (selectedToAccountId === selectedAccountId) {
+                  const other = accounts.find(
+                    (a) => a.id !== selectedAccountId
+                  );
+                  if (other) setSelectedToAccountId(other.id);
+                }
+              }}
               className={`flex-1 py-3 text-center transition-all whitespace-nowrap ${
                 txType === 'transfer'
                   ? 'border-b-4 border-white bg-black/15 font-extrabold text-white'
@@ -297,16 +372,23 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
               <span className="text-xl font-medium opacity-90 ml-1">GTQ</span>
             </div>
 
-            {/* Quick Account & Category Selector Row */}
+            {/* Quick Account & Destination / Category Selector Row */}
             <div className="w-full grid grid-cols-2 gap-3 mt-5 pt-2.5 border-t border-white/20">
               <div className="flex flex-col items-center">
                 <span className="text-[10px] uppercase font-medium tracking-wider opacity-80">
-                  Cuenta
+                  {txType === 'transfer' ? 'Cuenta Origen (-)' : 'Cuenta'}
                 </span>
                 <div className="relative mt-0.5">
                   <select
                     value={activeAccount?.id || ''}
-                    onChange={(e) => setSelectedAccountId(e.target.value)}
+                    onChange={(e) => {
+                      const newOrigin = e.target.value;
+                      setSelectedAccountId(newOrigin);
+                      if (txType === 'transfer' && newOrigin === selectedToAccountId) {
+                        const alt = accounts.find((a) => a.id !== newOrigin);
+                        if (alt) setSelectedToAccountId(alt.id);
+                      }
+                    }}
                     className="appearance-none bg-black/15 hover:bg-black/25 text-white font-bold text-xs uppercase tracking-wide px-3 py-1.5 pr-6 rounded-lg cursor-pointer focus:outline-none"
                   >
                     {accounts.map((acc) => (
@@ -323,17 +405,44 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                 </div>
               </div>
 
-              <div className="flex flex-col items-center">
-                <span className="text-[10px] uppercase font-medium tracking-wider opacity-80">
-                  Categoría
-                </span>
-                <div className="flex items-center space-x-1 font-bold text-xs uppercase tracking-wide mt-1 px-2 py-1 rounded-lg bg-black/10">
-                  <Wallet className="w-3.5 h-3.5 mr-1 shrink-0" />
-                  <span className="truncate max-w-[120px]">
-                    {activeCategory?.name || 'Almuerzo'}
+              {txType === 'transfer' ? (
+                <div className="flex flex-col items-center">
+                  <span className="text-[10px] uppercase font-medium tracking-wider opacity-80 flex items-center gap-1">
+                    <ArrowRight className="w-3 h-3" /> Cuenta Destino (+)
                   </span>
+                  <div className="relative mt-0.5">
+                    <select
+                      value={activeToAccount?.id || ''}
+                      onChange={(e) => setSelectedToAccountId(e.target.value)}
+                      className="appearance-none bg-black/20 hover:bg-black/30 text-[#75FF9E] font-bold text-xs uppercase tracking-wide px-3 py-1.5 pr-6 rounded-lg cursor-pointer focus:outline-none"
+                    >
+                      {accounts.map((acc) => (
+                        <option
+                          key={acc.id}
+                          value={acc.id}
+                          disabled={acc.id === activeAccount?.id}
+                          className="bg-[#1E1E1E] text-white"
+                        >
+                          {acc.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-80" />
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex flex-col items-center">
+                  <span className="text-[10px] uppercase font-medium tracking-wider opacity-80">
+                    Categoría
+                  </span>
+                  <div className="flex items-center space-x-1 font-bold text-xs uppercase tracking-wide mt-1 px-2 py-1 rounded-lg bg-black/10">
+                    <Wallet className="w-3.5 h-3.5 mr-1 shrink-0" />
+                    <span className="truncate max-w-[120px]">
+                      {activeCategory?.name || 'Almuerzo'}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -428,15 +537,14 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
             <div className="flex items-center justify-between px-3 py-2 bg-neutral-900/90 rounded-lg border border-neutral-800">
               <div className="flex items-center space-x-2.5 text-neutral-300">
                 <Calendar className="w-4 h-4 text-[#00acc1]" />
-                <span className="font-medium">
-                  Hoy,{' '}
-                  {new Date().toLocaleTimeString('es-GT', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
+                <span className="font-medium">Fecha del movimiento:</span>
               </div>
-              <ChevronRight className="w-4 h-4 text-neutral-500" />
+              <input
+                type="date"
+                value={txDateIso}
+                onChange={(e) => setTxDateIso(e.target.value)}
+                className="bg-[#202020] text-white font-mono text-xs px-2.5 py-1 rounded border border-white/10 focus:outline-none focus:border-[#00acc1]"
+              />
             </div>
 
             <div className="flex items-center px-3 py-2 bg-neutral-900/90 rounded-lg border border-neutral-800 focus-within:border-[#00acc1] transition-colors">
@@ -458,13 +566,13 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
           </section>
 
           {/* 4x4 BudgetBakers Calculator Keypad */}
-          <section className="flex-1 grid grid-cols-4 bg-[#181818] divide-x divide-y divide-neutral-800/90 min-h-[220px]">
+          <section className="flex-1 grid grid-cols-4 bg-[#181818] divide-x divide-y divide-neutral-800/90 min-h-[210px]">
             {['7', '8', '9', '/'].map((k) => (
               <button
                 key={k}
                 type="button"
                 onClick={() => handleKeyPress(k)}
-                className={`h-13 sm:h-14 flex items-center justify-center text-xl font-light active:bg-neutral-800 transition-colors ${
+                className={`h-12 sm:h-13 flex items-center justify-center text-xl font-light active:bg-neutral-800 transition-colors ${
                   k === '/'
                     ? 'bg-neutral-900/60 text-neutral-400 font-normal'
                     : 'text-neutral-200'
@@ -478,7 +586,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                 key={k}
                 type="button"
                 onClick={() => handleKeyPress(k)}
-                className={`h-13 sm:h-14 flex items-center justify-center text-xl font-light active:bg-neutral-800 transition-colors ${
+                className={`h-12 sm:h-13 flex items-center justify-center text-xl font-light active:bg-neutral-800 transition-colors ${
                   k === '*'
                     ? 'bg-neutral-900/60 text-neutral-400 font-normal'
                     : 'text-neutral-200'
@@ -492,7 +600,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                 key={k}
                 type="button"
                 onClick={() => handleKeyPress(k)}
-                className={`h-13 sm:h-14 flex items-center justify-center text-xl font-light active:bg-neutral-800 transition-colors ${
+                className={`h-12 sm:h-13 flex items-center justify-center text-xl font-light active:bg-neutral-800 transition-colors ${
                   k === '-'
                     ? 'bg-neutral-900/60 text-neutral-400 font-normal'
                     : 'text-neutral-200'
@@ -504,21 +612,21 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
             <button
               type="button"
               onClick={() => handleKeyPress('.')}
-              className="h-13 sm:h-14 flex items-center justify-center text-xl font-light text-neutral-300 active:bg-neutral-800"
+              className="h-12 sm:h-13 flex items-center justify-center text-xl font-light text-neutral-300 active:bg-neutral-800"
             >
               .
             </button>
             <button
               type="button"
               onClick={() => handleKeyPress('0')}
-              className="h-13 sm:h-14 flex items-center justify-center text-xl font-light text-neutral-200 active:bg-neutral-800"
+              className="h-12 sm:h-13 flex items-center justify-center text-xl font-light text-neutral-200 active:bg-neutral-800"
             >
               0
             </button>
             <button
               type="button"
               onClick={() => handleKeyPress('backspace')}
-              className="h-13 sm:h-14 flex items-center justify-center text-neutral-300 active:bg-neutral-800"
+              className="h-12 sm:h-13 flex items-center justify-center text-neutral-300 active:bg-neutral-800"
               aria-label="Borrar"
             >
               <Delete className="w-5 h-5" />
@@ -530,7 +638,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                   ? handleKeyPress('=')
                   : handleKeyPress('+')
               }
-              className="h-13 sm:h-14 flex items-center justify-center text-xl text-neutral-300 bg-neutral-900/60 active:bg-neutral-800 font-normal"
+              className="h-12 sm:h-13 flex items-center justify-center text-xl text-neutral-300 bg-neutral-900/60 active:bg-neutral-800 font-normal"
             >
               {['+', '-', '*', '/'].some((op) => expression.slice(1).includes(op))
                 ? '='
@@ -549,7 +657,11 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
           >
             <Check className="w-4 h-4 stroke-[2.5]" />
             <span>
-              {isSaving ? 'Sincronizando en Firestore...' : 'Guardar Transacción'}
+              {isSaving
+                ? 'Ejecutando runTransaction atómica...'
+                : editingTransaction
+                ? 'Actualizar y Cuadrar Saldos'
+                : 'Guardar Transacción Atómica'}
             </span>
           </button>
         </footer>

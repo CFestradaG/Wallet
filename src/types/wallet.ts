@@ -2,13 +2,27 @@ export type CurrencyCode = 'GTQ' | 'USD' | 'EUR' | 'MXN';
 export type AccountType = 'cash' | 'bank' | 'credit_card' | 'savings' | 'investment';
 export type TransactionType = 'income' | 'expense' | 'transfer';
 
-export interface UserProfile {
+export type PeriodFilterMode =
+  | 'fullPeriod'
+  | 'firstHalf'
+  | 'secondHalf'
+  | 'custom';
+
+export interface UserSettingsModel {
   userId: string;
   displayName: string;
   defaultCurrency: CurrencyCode;
+  /** Día del mes en que inicia el nuevo período financiero (ej. 27) */
+  startDayOfMonth: number;
+  /** Habilita la división interna del período en dos partes (Inicio de mes / Quincena) */
+  enableSplitPeriod: boolean;
+  /** Día en que inicia la segunda fase o quincena (ej. 13) */
+  midMonthDay: number;
   createdAt?: unknown;
   updatedAt?: unknown;
 }
+
+export type UserProfile = UserSettingsModel;
 
 export interface WalletAccount {
   id: string;
@@ -16,6 +30,7 @@ export interface WalletAccount {
   name: string;
   type: AccountType;
   balance: number;
+  currentBalance?: number;
   currency: CurrencyCode;
   colorHex: string;
   iconName: string;
@@ -41,6 +56,8 @@ export interface WalletTransaction {
   userId: string;
   accountId: string;
   accountName: string;
+  toAccountId?: string;
+  toAccountName?: string;
   categoryId: string;
   categoryName: string;
   categoryIcon: string;
@@ -51,6 +68,7 @@ export interface WalletTransaction {
   note: string;
   dateIso: string;
   yearMonth: string;
+  periodId?: string;
   createdAt?: unknown;
   updatedAt?: unknown;
 }
@@ -74,6 +92,7 @@ export interface MonthlySummary {
   id: string;
   userId: string;
   yearMonth: string;
+  periodId?: string;
   totalIncome: number;
   totalExpense: number;
   netCashFlow: number;
@@ -83,12 +102,22 @@ export interface MonthlySummary {
   updatedAt?: unknown;
 }
 
+export const INITIAL_USER_SETTINGS: UserSettingsModel = {
+  userId: 'demo',
+  displayName: 'Francisco Estrada',
+  defaultCurrency: 'GTQ',
+  startDayOfMonth: 27,
+  enableSplitPeriod: true,
+  midMonthDay: 13,
+};
+
 export const INITIAL_ACCOUNTS_SEED: Omit<WalletAccount, 'userId' | 'createdAt' | 'updatedAt'>[] = [
   {
     id: 'acc_efectivo',
     name: 'Efectivo',
     type: 'cash',
     balance: 4990.9,
+    currentBalance: 4990.9,
     currency: 'GTQ',
     colorHex: '#00DCF5',
     iconName: 'payments',
@@ -99,6 +128,7 @@ export const INITIAL_ACCOUNTS_SEED: Omit<WalletAccount, 'userId' | 'createdAt' |
     name: 'BAC Credomatic',
     type: 'credit_card',
     balance: -7807.7,
+    currentBalance: -7807.7,
     currency: 'GTQ',
     colorHex: '#FF5252',
     iconName: 'credit_card',
@@ -109,6 +139,7 @@ export const INITIAL_ACCOUNTS_SEED: Omit<WalletAccount, 'userId' | 'createdAt' |
     name: 'Banco Industrial (BI)',
     type: 'bank',
     balance: -1611.11,
+    currentBalance: -1611.11,
     currency: 'GTQ',
     colorHex: '#00E676',
     iconName: 'account_balance',
@@ -183,7 +214,7 @@ export const INITIAL_BUDGETS_SEED: Omit<WalletBudget, 'userId' | 'createdAt' | '
     limitAmount: 2000.0,
     spentAmount: 1400.0,
     currency: 'GTQ',
-    period: '2026_10',
+    period: 'period_2026_11',
     iconName: 'shopping_cart',
     colorHex: '#00DCF5',
   },
@@ -194,7 +225,7 @@ export const INITIAL_BUDGETS_SEED: Omit<WalletBudget, 'userId' | 'createdAt' | '
     limitAmount: 800.0,
     spentAmount: 200.0,
     currency: 'GTQ',
-    period: '2026_10',
+    period: 'period_2026_11',
     iconName: 'fuel',
     colorHex: '#00E676',
   },
@@ -205,7 +236,7 @@ export const INITIAL_BUDGETS_SEED: Omit<WalletBudget, 'userId' | 'createdAt' | '
     limitAmount: 2000.0,
     spentAmount: 1800.0,
     currency: 'GTQ',
-    period: '2026_10',
+    period: 'period_2026_11',
     iconName: 'wifi',
     colorHex: '#FF5252',
   },
@@ -224,8 +255,9 @@ export const INITIAL_TRANSACTIONS_SEED: Omit<WalletTransaction, 'userId' | 'crea
     amount: 280.0,
     currency: 'GTQ',
     note: 'Supermercado La Torre · Abarrotes',
-    dateIso: '2026-10-02T15:15:00.000Z',
-    yearMonth: '2026_10',
+    dateIso: '2026-10-28T15:15:00.000Z',
+    yearMonth: 'period_2026_11',
+    periodId: 'period_2026_11',
   },
   {
     id: 'tx_2',
@@ -239,8 +271,9 @@ export const INITIAL_TRANSACTIONS_SEED: Omit<WalletTransaction, 'userId' | 'crea
     amount: 60.0,
     currency: 'GTQ',
     note: 'Café Barista · Desayuno',
-    dateIso: '2026-10-02T08:45:00.000Z',
-    yearMonth: '2026_10',
+    dateIso: '2026-10-28T08:45:00.000Z',
+    yearMonth: 'period_2026_11',
+    periodId: 'period_2026_11',
   },
   {
     id: 'tx_3',
@@ -254,8 +287,9 @@ export const INITIAL_TRANSACTIONS_SEED: Omit<WalletTransaction, 'userId' | 'crea
     amount: 10.0,
     currency: 'GTQ',
     note: 'Gastos diarios · Comida casual',
-    dateIso: '2026-10-01T19:00:00.000Z',
-    yearMonth: '2026_10',
+    dateIso: '2026-10-27T19:00:00.000Z',
+    yearMonth: 'period_2026_11',
+    periodId: 'period_2026_11',
   },
   {
     id: 'tx_4',
@@ -268,9 +302,10 @@ export const INITIAL_TRANSACTIONS_SEED: Omit<WalletTransaction, 'userId' | 'crea
     type: 'income',
     amount: 8500.0,
     currency: 'GTQ',
-    note: 'Depósito de nómina quincenal',
-    dateIso: '2026-10-01T09:15:00.000Z',
-    yearMonth: '2026_10',
+    note: 'Depósito de nómina inicio de ciclo (27 Oct)',
+    dateIso: '2026-10-27T09:15:00.000Z',
+    yearMonth: 'period_2026_11',
+    periodId: 'period_2026_11',
   },
   {
     id: 'tx_5',
@@ -284,8 +319,9 @@ export const INITIAL_TRANSACTIONS_SEED: Omit<WalletTransaction, 'userId' | 'crea
     amount: 25.0,
     currency: 'GTQ',
     note: 'Compra de almuerzo · Restaurante San Martín',
-    dateIso: '2026-09-30T13:21:00.000Z',
-    yearMonth: '2026_10',
+    dateIso: '2026-11-02T13:21:00.000Z',
+    yearMonth: 'period_2026_11',
+    periodId: 'period_2026_11',
   },
   {
     id: 'tx_6',
@@ -299,8 +335,9 @@ export const INITIAL_TRANSACTIONS_SEED: Omit<WalletTransaction, 'userId' | 'crea
     amount: 50.0,
     currency: 'GTQ',
     note: 'Compra de almuerzo ejecutiva · Pollo Campero',
-    dateIso: '2026-09-30T13:11:00.000Z',
-    yearMonth: '2026_10',
+    dateIso: '2026-11-14T13:11:00.000Z',
+    yearMonth: 'period_2026_11',
+    periodId: 'period_2026_11',
   },
   {
     id: 'tx_7',
@@ -314,22 +351,26 @@ export const INITIAL_TRANSACTIONS_SEED: Omit<WalletTransaction, 'userId' | 'crea
     amount: 200.0,
     currency: 'GTQ',
     note: 'Gasolina Shell Las Américas · V-Power',
-    dateIso: '2026-09-30T08:40:00.000Z',
-    yearMonth: '2026_10',
+    dateIso: '2026-11-15T08:40:00.000Z',
+    yearMonth: 'period_2026_11',
+    periodId: 'period_2026_11',
   },
   {
     id: 'tx_8',
     accountId: 'acc_efectivo',
     accountName: 'Efectivo',
-    categoryId: 'cat_salud',
-    categoryName: 'Salud y Farmacia',
-    categoryIcon: 'heart_pulse',
-    categoryColor: '#FF5252',
-    type: 'expense',
-    amount: 150.0,
+    toAccountId: 'acc_bac',
+    toAccountName: 'BAC Credomatic',
+    categoryId: 'cat_servicios',
+    categoryName: 'Servicios e Internet',
+    categoryIcon: 'wifi',
+    categoryColor: '#00DCF5',
+    type: 'transfer',
+    amount: 500.0,
     currency: 'GTQ',
-    note: 'Farmacia Galeno · Medicamentos',
-    dateIso: '2026-09-30T16:20:00.000Z',
-    yearMonth: '2026_10',
+    note: 'Transferencia abono a tarjeta BAC Credomatic',
+    dateIso: '2026-11-16T16:20:00.000Z',
+    yearMonth: 'period_2026_11',
+    periodId: 'period_2026_11',
   },
 ];

@@ -14,10 +14,10 @@ import {
   query,
   where,
   writeBatch,
+  runTransaction,
   serverTimestamp,
   deleteDoc,
   updateDoc,
-  increment,
 } from 'firebase/firestore';
 import {
   Wallet,
@@ -50,6 +50,8 @@ import {
   Smartphone,
   Code2,
   Trash2,
+  Edit3,
+  Settings2,
   Eye,
   X,
   ChevronLeft,
@@ -69,13 +71,20 @@ import {
   WalletTransaction,
   WalletBudget,
   MonthlySummary,
+  UserSettingsModel,
+  PeriodFilterMode,
   TransactionType,
   AccountType,
+  INITIAL_USER_SETTINGS,
   INITIAL_ACCOUNTS_SEED,
   INITIAL_CATEGORIES_SEED,
   INITIAL_BUDGETS_SEED,
   INITIAL_TRANSACTIONS_SEED,
 } from './types/wallet';
+import {
+  FinancialPeriodHelper,
+  DateRangeValue,
+} from './utils/financialPeriodHelper';
 import { NewTransactionModal } from './components/NewTransactionModal';
 import { FlutterArchitectureExplorer } from './components/FlutterArchitectureExplorer';
 import { MobilePreviewView } from './components/MobilePreviewView';
@@ -135,10 +144,14 @@ export default function App() {
   const [transactions, setTransactions] = useState<WalletTransaction[]>(() =>
     INITIAL_TRANSACTIONS_SEED.map((t) => ({ ...t, userId: 'demo' }))
   );
+  const [userSettings, setUserSettings] = useState<UserSettingsModel>(
+    INITIAL_USER_SETTINGS
+  );
   const [summary, setSummary] = useState<MonthlySummary>({
-    id: '2026_10',
+    id: 'period_2026_11',
     userId: 'demo',
-    yearMonth: '2026_10',
+    yearMonth: 'period_2026_11',
+    periodId: 'period_2026_11',
     totalIncome: 12500.0,
     totalExpense: 6430.0,
     netCashFlow: 6070.0,
@@ -146,10 +159,24 @@ export default function App() {
     currency: 'GTQ',
   });
 
+  // Dynamic Financial Period Filter State (Requerimiento 2)
+  const [periodFilterMode, setPeriodFilterMode] =
+    useState<PeriodFilterMode>('fullPeriod');
+  // Reference date set to Oct 28, 2026 so with startDayOfMonth = 27 it demonstrates "2026-11 (27 Oct - 26 Nov)"
+  const [referenceDate, setReferenceDate] = useState<Date>(
+    () => new Date('2026-10-28T12:00:00.000Z')
+  );
+  const [customStartIso, setCustomStartIso] = useState<string>('2026-10-27');
+  const [customEndIso, setCustomEndIso] = useState<string>('2026-11-26');
+  const [isPeriodSettingsModalOpen, setIsPeriodSettingsModalOpen] =
+    useState<boolean>(false);
+
   // Modals & UI Filters
   const [isCalcOpen, setIsCalcOpen] = useState<boolean>(false);
   const [calcInitialType, setCalcInitialType] =
     useState<TransactionType>('expense');
+  const [editingTransaction, setEditingTransaction] =
+    useState<WalletTransaction | null>(null);
   const [isAddAccountOpen, setIsAddAccountOpen] = useState<boolean>(false);
   const [isAddBudgetOpen, setIsAddBudgetOpen] = useState<boolean>(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
@@ -200,11 +227,14 @@ export default function App() {
     try {
       const snap = await getDoc(userDocRef);
       if (!snap.exists()) {
-        // First create Master Gate /users/{userId}
+        // First create Master Gate /users/{userId} with UserSettingsModel fields
         await setDoc(userDocRef, {
           userId: uid,
           displayName: (user.displayName || 'Francisco Estrada').slice(0, 100),
           defaultCurrency: 'GTQ',
+          startDayOfMonth: 27,
+          enableSplitPeriod: true,
+          midMonthDay: 13,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
@@ -214,6 +244,7 @@ export default function App() {
         for (const acc of INITIAL_ACCOUNTS_SEED) {
           batch1.set(doc(db, 'users', uid, 'accounts', acc.id), {
             ...acc,
+            currentBalance: acc.balance,
             userId: uid,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
@@ -235,9 +266,10 @@ export default function App() {
             updatedAt: serverTimestamp(),
           });
         }
-        batch1.set(doc(db, 'users', uid, 'summaries', '2026_10'), {
+        batch1.set(doc(db, 'users', uid, 'summaries', 'period_2026_11'), {
           userId: uid,
-          yearMonth: '2026_10',
+          yearMonth: 'period_2026_11',
+          periodId: 'period_2026_11',
           totalIncome: 12500.0,
           totalExpense: 6430.0,
           netCashFlow: 6070.0,
@@ -364,7 +396,36 @@ export default function App() {
         )
     );
 
-    const summaryDocRef = doc(db, 'users', uid, 'summaries', '2026_10');
+    const userDocRef = doc(db, 'users', uid);
+    const unsubUser = onSnapshot(
+      userDocRef,
+      (snap) => {
+        if (snap.exists()) {
+          const d = snap.data();
+          setUserSettings({
+            userId: uid,
+            displayName: d.displayName || 'Francisco Estrada',
+            defaultCurrency: d.defaultCurrency || 'GTQ',
+            startDayOfMonth: Number(d.startDayOfMonth ?? 27),
+            enableSplitPeriod: Boolean(d.enableSplitPeriod ?? true),
+            midMonthDay: Number(d.midMonthDay ?? 13),
+          });
+        }
+      },
+      (err) =>
+        handleFirestoreError(err, OperationType.GET, `users/${uid}`)
+    );
+
+    const activePeriodDocId = new FinancialPeriodHelper(
+      userSettings
+    ).getFirestorePeriodId(referenceDate);
+    const summaryDocRef = doc(
+      db,
+      'users',
+      uid,
+      'summaries',
+      activePeriodDocId
+    );
     const unsubSum = onSnapshot(
       summaryDocRef,
       (snap) => {
@@ -379,22 +440,76 @@ export default function App() {
         handleFirestoreError(
           err,
           OperationType.GET,
-          `users/${uid}/summaries/2026_10`
+          `users/${uid}/summaries/${activePeriodDocId}`
         )
     );
 
     return () => {
+      unsubUser();
       unsubAcc();
       unsubCat();
       unsubBud();
       unsubTx();
       unsubSum();
     };
-  }, [authReady, currentUser]);
+  }, [authReady, currentUser, userSettings.startDayOfMonth, referenceDate]);
+
+  // FinancialPeriodHelper Instance & Active Period Range (Requerimiento 2)
+  const periodHelper = useMemo(
+    () => new FinancialPeriodHelper(userSettings),
+    [userSettings]
+  );
+
+  const fullPeriodRange = useMemo(
+    () => periodHelper.getPeriodDateRange(referenceDate),
+    [periodHelper, referenceDate]
+  );
+  const firstHalfRange = useMemo(
+    () => periodHelper.getFirstHalfDateRange(referenceDate),
+    [periodHelper, referenceDate]
+  );
+  const secondHalfRange = useMemo(
+    () => periodHelper.getSecondHalfDateRange(referenceDate),
+    [periodHelper, referenceDate]
+  );
+  const customRangeObj: DateRangeValue = useMemo(
+    () => ({
+      start: new Date(`${customStartIso}T00:00:00.000Z`),
+      end: new Date(`${customEndIso}T23:59:59.999Z`),
+    }),
+    [customStartIso, customEndIso]
+  );
+
+  const activeDateRange = useMemo(
+    () =>
+      periodHelper.getRangeForFilterMode(
+        periodFilterMode,
+        referenceDate,
+        customRangeObj
+      ),
+    [periodHelper, periodFilterMode, referenceDate, customRangeObj]
+  );
+
+  const activePeriodName = useMemo(
+    () => periodHelper.getPeriodName(referenceDate),
+    [periodHelper, referenceDate]
+  );
+  const activeFirestorePeriodId = useMemo(
+    () => periodHelper.getFirestorePeriodId(referenceDate),
+    [periodHelper, referenceDate]
+  );
+  const activeSubPeriodLabel = useMemo(
+    () => periodHelper.getSubPeriod(referenceDate),
+    [periodHelper, referenceDate]
+  );
 
   // Computed Financial Metrics
   const totalNetBalance = useMemo(
-    () => accounts.reduce((acc, a) => acc + a.balance, 0),
+    () =>
+      accounts.reduce(
+        (acc, a) => acc + Number(a.currentBalance ?? a.balance ?? 0),
+        0
+      ),
     [accounts]
   );
 
@@ -402,15 +517,24 @@ export default function App() {
     return transactions.filter((t) => {
       const matchesAcc =
         selectedAccountFilter === 'all' ||
-        t.accountId === selectedAccountFilter;
+        t.accountId === selectedAccountFilter ||
+        t.toAccountId === selectedAccountFilter;
       const matchesSearch =
         !searchTerm.trim() ||
         t.note.toLowerCase().includes(searchTerm.toLowerCase()) ||
         t.categoryName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         t.accountName.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesAcc && matchesSearch;
+      const txDate = new Date(t.dateIso);
+      const matchesPeriod = periodHelper.isDateInRange(txDate, activeDateRange);
+      return matchesAcc && matchesSearch && matchesPeriod;
     });
-  }, [transactions, selectedAccountFilter, searchTerm]);
+  }, [
+    transactions,
+    selectedAccountFilter,
+    searchTerm,
+    periodHelper,
+    activeDateRange,
+  ]);
 
   // Handlers: Authentication
   const handleGoogleLogin = async () => {
@@ -429,82 +553,202 @@ export default function App() {
     showToast('Sesión cerrada');
   };
 
-  // Handler: Save Transaction (Firestore WriteBatch or Local Interactive State)
+  // Helper: Accumulate signed balance delta per accountId for atomic balance reconciliation
+  const accumulateTxAccountDeltas = (
+    deltasMap: Record<string, number>,
+    tx: {
+      type: TransactionType;
+      amount: number;
+      accountId: string;
+      toAccountId?: string;
+    },
+    multiplier: 1 | -1
+  ) => {
+    const amt = Math.abs(tx.amount) * multiplier;
+    if (tx.type === 'income') {
+      deltasMap[tx.accountId] = (deltasMap[tx.accountId] || 0) + amt;
+    } else if (tx.type === 'expense') {
+      deltasMap[tx.accountId] = (deltasMap[tx.accountId] || 0) - amt;
+    } else if (tx.type === 'transfer') {
+      deltasMap[tx.accountId] = (deltasMap[tx.accountId] || 0) - amt;
+      if (tx.toAccountId) {
+        deltasMap[tx.toAccountId] = (deltasMap[tx.toAccountId] || 0) + amt;
+      }
+    }
+  };
+
+  // Handler: Save or Update Transaction (Requerimiento 1: Transacción Atómica en Firestore y Cuadre de Saldos)
   const handleSaveTransaction = async (data: {
+    id?: string;
     type: TransactionType;
     amount: number;
     accountId: string;
+    toAccountId?: string;
     categoryId: string;
     note: string;
     dateIso: string;
   }) => {
     const acc = accounts.find((a) => a.id === data.accountId) || accounts[0];
+    const toAcc = data.toAccountId
+      ? accounts.find((a) => a.id === data.toAccountId)
+      : undefined;
     const cat =
       categories.find((c) => c.id === data.categoryId) || categories[0];
-    const txId = `tx_${Date.now()}`;
-    const delta = data.type === 'income' ? data.amount : -data.amount;
+
+    const isEditing = Boolean(data.id);
+    const originalTx = isEditing
+      ? transactions.find((t) => t.id === data.id)
+      : undefined;
+    const txId = data.id || `tx_${Date.now()}`;
+
+    const txDate = new Date(data.dateIso);
+    const targetPeriodId = periodHelper.getFirestorePeriodId(txDate); // ej. "period_2026_11"
+
+    // 1. Calculate net mathematical delta for every involved account
+    const accountDeltas: Record<string, number> = {};
+    if (originalTx) {
+      // Revert original transaction impact first (-1)
+      accumulateTxAccountDeltas(accountDeltas, originalTx, -1);
+    }
+    // Apply new/updated transaction impact (+1)
+    accumulateTxAccountDeltas(
+      accountDeltas,
+      {
+        type: data.type,
+        amount: data.amount,
+        accountId: acc.id,
+        toAccountId: data.type === 'transfer' ? toAcc?.id : undefined,
+      },
+      1
+    );
+
+    const affectedAccountIds = Object.keys(accountDeltas).filter(
+      (id) => Math.abs(accountDeltas[id]) >= 0.001
+    );
 
     if (currentUser) {
       const uid = currentUser.uid;
       try {
-        const batch = writeBatch(db);
         const txRef = doc(db, 'users', uid, 'transactions', txId);
-        batch.set(txRef, {
-          userId: uid,
-          accountId: acc.id,
-          accountName: acc.name.slice(0, 80),
-          categoryId: cat.id,
-          categoryName: cat.name.slice(0, 80),
-          categoryIcon: cat.iconName.slice(0, 40),
-          categoryColor: cat.colorHex.slice(0, 9),
-          type: data.type,
-          amount: Number(data.amount),
-          currency: 'GTQ',
-          note: data.note.slice(0, 200),
-          dateIso: data.dateIso,
-          yearMonth: '2026_10',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+        const sumRef = doc(db, 'users', uid, 'summaries', targetPeriodId);
 
-        const accRef = doc(db, 'users', uid, 'accounts', acc.id);
-        batch.update(accRef, {
-          balance: Number((acc.balance + delta).toFixed(2)),
-          updatedAt: serverTimestamp(),
-        });
+        await runTransaction(db, async (firestoreTx) => {
+          // FASE 1: Todas las lecturas atómicas primero
+          const accSnaps: Record<string, Awaited<ReturnType<typeof firestoreTx.get>>> = {};
+          for (const accId of affectedAccountIds) {
+            accSnaps[accId] = await firestoreTx.get(
+              doc(db, 'users', uid, 'accounts', accId)
+            );
+          }
+          const sumSnap = await firestoreTx.get(sumRef);
 
-        const matchingBudget = budgets.find((b) => b.categoryId === cat.id);
-        if (matchingBudget && data.type === 'expense') {
-          const budRef = doc(db, 'users', uid, 'budgets', matchingBudget.id);
-          batch.update(budRef, {
-            spentAmount: Number(
-              (matchingBudget.spentAmount + data.amount).toFixed(2)
-            ),
+          // FASE 2: Crear o actualizar el documento en /users/{uid}/transactions/{txId}
+          const txPayload: Record<string, unknown> = {
+            userId: uid,
+            accountId: acc.id,
+            accountName: acc.name.slice(0, 80),
+            categoryId: cat.id,
+            categoryName: cat.name.slice(0, 80),
+            categoryIcon: cat.iconName.slice(0, 40),
+            categoryColor: cat.colorHex.slice(0, 9),
+            type: data.type,
+            amount: Number(data.amount),
+            currency: 'GTQ',
+            note: data.note.slice(0, 200),
+            dateIso: data.dateIso,
+            yearMonth: targetPeriodId,
+            periodId: targetPeriodId,
             updatedAt: serverTimestamp(),
-          });
-        }
+          };
+          if (data.type === 'transfer' && toAcc) {
+            txPayload.toAccountId = toAcc.id;
+            txPayload.toAccountName = toAcc.name.slice(0, 80);
+          }
 
-        const sumRef = doc(db, 'users', uid, 'summaries', '2026_10');
-        const newInc =
-          summary.totalIncome + (data.type === 'income' ? data.amount : 0);
-        const newExp =
-          summary.totalExpense + (data.type === 'expense' ? data.amount : 0);
-        const newNet = newInc - newExp;
-        const newRate =
-          newInc > 0 ? Number(((newNet / newInc) * 100).toFixed(1)) : 0;
+          if (isEditing && originalTx) {
+            firestoreTx.update(txRef, txPayload);
+          } else {
+            txPayload.createdAt = serverTimestamp();
+            firestoreTx.set(txRef, txPayload);
+          }
 
-        batch.update(sumRef, {
-          totalIncome: Number(newInc.toFixed(2)),
-          totalExpense: Number(newExp.toFixed(2)),
-          netCashFlow: Number(newNet.toFixed(2)),
-          savingsRate: newRate,
-          currency: 'GTQ',
-          updatedAt: serverTimestamp(),
+          // FASE 3: Actualizar currentBalance y balance en cada cuenta afectada en el MISMO bloque atómico
+          for (const accId of affectedAccountIds) {
+            const snap = accSnaps[accId];
+            const fallbackAcc = accounts.find((a) => a.id === accId);
+            const currentBal = snap && snap.exists()
+              ? Number(
+                  snap.data().currentBalance ??
+                    snap.data().balance ??
+                    fallbackAcc?.balance ??
+                    0
+                )
+              : Number(fallbackAcc?.balance ?? 0);
+            const updatedBalance = Number(
+              (currentBal + accountDeltas[accId]).toFixed(2)
+            );
+
+            firestoreTx.update(doc(db, 'users', uid, 'accounts', accId), {
+              currentBalance: updatedBalance,
+              balance: updatedBalance,
+              updatedAt: serverTimestamp(),
+            });
+          }
+
+          // FASE 4: Actualizar o crear el resumen del período financiero en /summaries/{periodId}
+          const oldInc =
+            originalTx && originalTx.type === 'income' ? originalTx.amount : 0;
+          const oldExp =
+            originalTx && originalTx.type === 'expense' ? originalTx.amount : 0;
+          const newInc = data.type === 'income' ? data.amount : 0;
+          const newExp = data.type === 'expense' ? data.amount : 0;
+
+          const prevInc = sumSnap.exists()
+            ? Number(sumSnap.data().totalIncome ?? summary.totalIncome)
+            : summary.totalIncome;
+          const prevExp = sumSnap.exists()
+            ? Number(sumSnap.data().totalExpense ?? summary.totalExpense)
+            : summary.totalExpense;
+
+          const totalInc = Math.max(0, Number((prevInc - oldInc + newInc).toFixed(2)));
+          const totalExp = Math.max(0, Number((prevExp - oldExp + newExp).toFixed(2)));
+          const netFlow = Number((totalInc - totalExp).toFixed(2));
+          const savingsRate =
+            totalInc > 0
+              ? Number(((netFlow / totalInc) * 100).toFixed(1))
+              : 0;
+
+          if (sumSnap.exists()) {
+            firestoreTx.update(sumRef, {
+              yearMonth: targetPeriodId,
+              periodId: targetPeriodId,
+              totalIncome: totalInc,
+              totalExpense: totalExp,
+              netCashFlow: netFlow,
+              savingsRate,
+              currency: 'GTQ',
+              updatedAt: serverTimestamp(),
+            });
+          } else {
+            firestoreTx.set(sumRef, {
+              userId: uid,
+              yearMonth: targetPeriodId,
+              periodId: targetPeriodId,
+              totalIncome: totalInc,
+              totalExpense: totalExp,
+              netCashFlow: netFlow,
+              savingsRate,
+              currency: 'GTQ',
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          }
         });
 
-        await batch.commit();
         showToast(
-          `Registro guardado en /users/${uid.slice(0, 6)}.../transactions`
+          isEditing
+            ? `Transacción editada y saldos recuadrados en Firestore (${targetPeriodId})`
+            : `Transacción atómica (${data.type.toUpperCase()}) registrada en ${targetPeriodId}`
         );
       } catch (error) {
         handleFirestoreError(
@@ -514,12 +758,14 @@ export default function App() {
         );
       }
     } else {
-      // Local state update in preview mode
-      const newTx: WalletTransaction = {
+      // Local state atomic update in preview mode
+      const updatedTxObj: WalletTransaction = {
         id: txId,
         userId: 'demo',
         accountId: acc.id,
         accountName: acc.name,
+        toAccountId: data.type === 'transfer' ? toAcc?.id : undefined,
+        toAccountName: data.type === 'transfer' ? toAcc?.name : undefined,
         categoryId: cat.id,
         categoryName: cat.name,
         categoryIcon: cat.iconName,
@@ -529,36 +775,52 @@ export default function App() {
         currency: 'GTQ',
         note: data.note,
         dateIso: data.dateIso,
-        yearMonth: '2026_10',
+        yearMonth: targetPeriodId,
+        periodId: targetPeriodId,
       };
-      setTransactions((prev) => [newTx, ...prev]);
-      setAccounts((prev) =>
-        prev.map((a) =>
-          a.id === acc.id
-            ? { ...a, balance: Number((a.balance + delta).toFixed(2)) }
-            : a
-        )
+
+      setTransactions((prev) =>
+        isEditing
+          ? prev.map((t) => (t.id === txId ? updatedTxObj : t))
+          : [updatedTxObj, ...prev]
       );
-      if (data.type === 'expense') {
-        setBudgets((prev) =>
-          prev.map((b) =>
-            b.categoryId === cat.id
-              ? {
-                  ...b,
-                  spentAmount: Number((b.spentAmount + data.amount).toFixed(2)),
-                }
-              : b
-          )
-        );
-      }
+
+      setAccounts((prev) =>
+        prev.map((a) => {
+          const delta = accountDeltas[a.id];
+          if (!delta) return a;
+          const baseBal = Number(a.currentBalance ?? a.balance ?? 0);
+          const nextBal = Number((baseBal + delta).toFixed(2));
+          return {
+            ...a,
+            balance: nextBal,
+            currentBalance: nextBal,
+          };
+        })
+      );
+
       setSummary((prev) => {
-        const totalIncome =
-          prev.totalIncome + (data.type === 'income' ? data.amount : 0);
-        const totalExpense =
-          prev.totalExpense + (data.type === 'expense' ? data.amount : 0);
-        const netCashFlow = totalIncome - totalExpense;
+        const oldInc =
+          originalTx && originalTx.type === 'income' ? originalTx.amount : 0;
+        const oldExp =
+          originalTx && originalTx.type === 'expense' ? originalTx.amount : 0;
+        const newInc = data.type === 'income' ? data.amount : 0;
+        const newExp = data.type === 'expense' ? data.amount : 0;
+
+        const totalIncome = Math.max(
+          0,
+          Number((prev.totalIncome - oldInc + newInc).toFixed(2))
+        );
+        const totalExpense = Math.max(
+          0,
+          Number((prev.totalExpense - oldExp + newExp).toFixed(2))
+        );
+        const netCashFlow = Number((totalIncome - totalExpense).toFixed(2));
         return {
           ...prev,
+          id: targetPeriodId,
+          yearMonth: targetPeriodId,
+          periodId: targetPeriodId,
           totalIncome,
           totalExpense,
           netCashFlow,
@@ -568,11 +830,17 @@ export default function App() {
               : 0,
         };
       });
-      showToast('Transacción registrada (Inicia sesión para persistir en Firestore)');
+
+      showToast(
+        isEditing
+          ? `Transacción editada y saldos cuadrados (${targetPeriodId})`
+          : `Movimiento (${data.type.toUpperCase()}) cuadrado en saldos y período ${targetPeriodId}`
+      );
     }
+    setEditingTransaction(null);
   };
 
-  // Handler: Quick Card Transfer (Abonar a tarjeta BAC)
+  // Handler: Quick Card Transfer (Abonar a tarjeta BAC en una sola operación atómica)
   const handleQuickPayBacCard = async () => {
     const cashAcc = accounts.find((a) => a.id === 'acc_efectivo') || accounts[0];
     const bacAcc = accounts.find((a) => a.id === 'acc_bac') || accounts[1];
@@ -583,35 +851,11 @@ export default function App() {
       type: 'transfer',
       amount: paymentAmount,
       accountId: cashAcc.id,
+      toAccountId: bacAcc.id,
       categoryId: categories[0]?.id || 'cat_servicios',
-      note: `Abono a tarjeta ${bacAcc.name} desde ${cashAcc.name}`,
-      dateIso: new Date().toISOString(),
+      note: `Transferencia abono a tarjeta ${bacAcc.name} desde ${cashAcc.name}`,
+      dateIso: referenceDate.toISOString(),
     });
-
-    if (currentUser) {
-      const uid = currentUser.uid;
-      try {
-        await updateDoc(doc(db, 'users', uid, 'accounts', bacAcc.id), {
-          balance: Number((bacAcc.balance + paymentAmount).toFixed(2)),
-          updatedAt: serverTimestamp(),
-        });
-      } catch (err) {
-        handleFirestoreError(
-          err,
-          OperationType.UPDATE,
-          `users/${uid}/accounts/${bacAcc.id}`
-        );
-      }
-    } else {
-      setAccounts((prev) =>
-        prev.map((a) =>
-          a.id === bacAcc.id
-            ? { ...a, balance: Number((a.balance + paymentAmount).toFixed(2)) }
-            : a
-        )
-      );
-    }
-    showToast('Abono de GTQ 500.00 aplicado a BAC Credomatic');
   };
 
   // Handler: Add Account
@@ -734,13 +978,76 @@ export default function App() {
     setIsAddBudgetOpen(false);
   };
 
-  // Handler: Delete Transaction
+  // Handler: Delete Transaction Atomically (Reverting currentBalance in involved accounts and summary)
   const handleDeleteTransaction = async (tx: WalletTransaction) => {
+    const accountDeltas: Record<string, number> = {};
+    accumulateTxAccountDeltas(accountDeltas, tx, -1); // -1 reverts impact
+    const affectedAccountIds = Object.keys(accountDeltas).filter(
+      (id) => Math.abs(accountDeltas[id]) >= 0.001
+    );
+    const txPeriodId =
+      tx.periodId ||
+      periodHelper.getFirestorePeriodId(new Date(tx.dateIso));
+
     if (currentUser) {
       const uid = currentUser.uid;
       try {
-        await deleteDoc(doc(db, 'users', uid, 'transactions', tx.id));
-        showToast('Registro eliminado de Cloud Firestore');
+        const txRef = doc(db, 'users', uid, 'transactions', tx.id);
+        const sumRef = doc(db, 'users', uid, 'summaries', txPeriodId);
+
+        await runTransaction(db, async (firestoreTx) => {
+          const accSnaps: Record<string, Awaited<ReturnType<typeof firestoreTx.get>>> = {};
+          for (const accId of affectedAccountIds) {
+            accSnaps[accId] = await firestoreTx.get(
+              doc(db, 'users', uid, 'accounts', accId)
+            );
+          }
+          const sumSnap = await firestoreTx.get(sumRef);
+
+          for (const accId of affectedAccountIds) {
+            const snap = accSnaps[accId];
+            if (snap && snap.exists()) {
+              const cur = Number(
+                snap.data().currentBalance ?? snap.data().balance ?? 0
+              );
+              const reverted = Number((cur + accountDeltas[accId]).toFixed(2));
+              firestoreTx.update(doc(db, 'users', uid, 'accounts', accId), {
+                currentBalance: reverted,
+                balance: reverted,
+                updatedAt: serverTimestamp(),
+              });
+            }
+          }
+
+          if (sumSnap.exists()) {
+            const sData = sumSnap.data();
+            const revInc =
+              tx.type === 'income'
+                ? Math.max(0, Number(sData.totalIncome || 0) - tx.amount)
+                : Number(sData.totalIncome || 0);
+            const revExp =
+              tx.type === 'expense'
+                ? Math.max(0, Number(sData.totalExpense || 0) - tx.amount)
+                : Number(sData.totalExpense || 0);
+            const revNet = Number((revInc - revExp).toFixed(2));
+            firestoreTx.update(sumRef, {
+              totalIncome: Number(revInc.toFixed(2)),
+              totalExpense: Number(revExp.toFixed(2)),
+              netCashFlow: revNet,
+              savingsRate:
+                revInc > 0
+                  ? Number(((revNet / revInc) * 100).toFixed(1))
+                  : 0,
+              updatedAt: serverTimestamp(),
+            });
+          }
+
+          firestoreTx.delete(txRef);
+        });
+
+        showToast(
+          'Transacción eliminada y currentBalance revertido atómicamente en Firestore'
+        );
       } catch (err) {
         handleFirestoreError(
           err,
@@ -750,8 +1057,80 @@ export default function App() {
       }
     } else {
       setTransactions((prev) => prev.filter((item) => item.id !== tx.id));
-      showToast('Registro eliminado');
+      setAccounts((prev) =>
+        prev.map((a) => {
+          const delta = accountDeltas[a.id];
+          if (!delta) return a;
+          const nextBal = Number(
+            (Number(a.currentBalance ?? a.balance ?? 0) + delta).toFixed(2)
+          );
+          return { ...a, balance: nextBal, currentBalance: nextBal };
+        })
+      );
+      setSummary((prev) => {
+        const totalIncome =
+          tx.type === 'income'
+            ? Math.max(0, Number((prev.totalIncome - tx.amount).toFixed(2)))
+            : prev.totalIncome;
+        const totalExpense =
+          tx.type === 'expense'
+            ? Math.max(0, Number((prev.totalExpense - tx.amount).toFixed(2)))
+            : prev.totalExpense;
+        const netCashFlow = Number((totalIncome - totalExpense).toFixed(2));
+        return {
+          ...prev,
+          totalIncome,
+          totalExpense,
+          netCashFlow,
+          savingsRate:
+            totalIncome > 0
+              ? Number(((netCashFlow / totalIncome) * 100).toFixed(1))
+              : 0,
+        };
+      });
+      showToast('Registro eliminado y saldo de cuenta revertido sin descuadres');
     }
+  };
+
+  // Handler: Save Financial Period Settings (UserSettingsModel in /users/{userId})
+  const handleSavePeriodSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const clampedStart = Math.max(
+      1,
+      Math.min(31, Number(userSettings.startDayOfMonth) || 27)
+    );
+    const clampedMid = Math.max(
+      1,
+      Math.min(31, Number(userSettings.midMonthDay) || 13)
+    );
+    const updated: UserSettingsModel = {
+      ...userSettings,
+      startDayOfMonth: clampedStart,
+      midMonthDay: clampedMid,
+    };
+    setUserSettings(updated);
+
+    if (currentUser) {
+      const uid = currentUser.uid;
+      try {
+        await updateDoc(doc(db, 'users', uid), {
+          startDayOfMonth: updated.startDayOfMonth,
+          enableSplitPeriod: updated.enableSplitPeriod,
+          midMonthDay: updated.midMonthDay,
+          updatedAt: serverTimestamp(),
+        });
+        showToast(
+          `Ciclo financiero actualizado en Firestore (Inicia día ${updated.startDayOfMonth})`
+        );
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${uid}`);
+      }
+    } else {
+      showToast(
+        `Ciclo financiero configurado: Día de inicio ${updated.startDayOfMonth}, Quincena día ${updated.midMonthDay}`
+      );
+    }
+    setIsPeriodSettingsModalOpen(false);
   };
 
   // Handler: Export CSV
@@ -1062,55 +1441,163 @@ export default function App() {
               </button>
             </section>
 
-            {/* Sub-Bar: Period Switcher & Filter Status */}
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center rounded-xl bg-[#2A2A2A] p-1">
-                  <button
-                    type="button"
-                    onClick={() => showToast('Periodo: Septiembre 2026')}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-[#BACBB9] hover:text-white hover:bg-[#393939]"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <div className="px-4 py-1 flex items-center gap-2 text-white text-sm font-semibold">
-                    <Calendar className="w-4 h-4 text-[#75FF9E]" />
-                    <span>Este mes (Octubre 2026)</span>
+            {/* Sub-Bar: Dynamic Financial Period Selector (Requerimiento 2) */}
+            <div className="bg-[#1C1B1B] border border-white/5 rounded-xl p-4 flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <div className="flex items-center rounded-xl bg-[#2A2A2A] p-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const prev = new Date(referenceDate);
+                        prev.setMonth(prev.getMonth() - 1);
+                        setReferenceDate(prev);
+                      }}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-[#BACBB9] hover:text-white hover:bg-[#393939]"
+                      title="Período anterior"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <div className="px-3.5 py-1 flex items-center gap-2 text-white text-xs sm:text-sm font-semibold">
+                      <Calendar className="w-4 h-4 text-[#75FF9E]" />
+                      <span>
+                        Ciclo Financiero {activePeriodName} (
+                        {FinancialPeriodHelper.formatShortRange(fullPeriodRange)}
+                        )
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = new Date(referenceDate);
+                        next.setMonth(next.getMonth() + 1);
+                        setReferenceDate(next);
+                      }}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-[#BACBB9] hover:text-white hover:bg-[#393939]"
+                      title="Siguiente período"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
                   </div>
+
+                  <span className="px-2.5 py-1 rounded-lg bg-[#00DCF5]/15 text-[#00DCF5] text-xs font-mono font-semibold">
+                    /summaries/{activeFirestorePeriodId}
+                  </span>
+                  <span className="px-2.5 py-1 rounded-lg bg-[#00E676]/15 text-[#75FF9E] text-xs font-semibold">
+                    {activeSubPeriodLabel}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {selectedAccountFilter !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAccountFilter('all')}
+                      className="px-3 py-2 rounded-xl bg-[#252525] text-xs text-[#00DCF5] font-semibold"
+                    >
+                      Mostrar todas las cuentas
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => showToast('Periodo: Noviembre 2026')}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-[#BACBB9] hover:text-white hover:bg-[#393939]"
+                    onClick={() => setIsPeriodSettingsModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#252525] hover:bg-[#2E2E2E] text-white text-xs font-semibold border border-white/10 transition-colors"
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    <Settings2 className="w-4 h-4 text-[#00DCF5]" />
+                    <span>
+                      Ciclo Nómina (Día {userSettings.startDayOfMonth} / Q{' '}
+                      {userSettings.midMonthDay})
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddAccountOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#201F1F] hover:bg-[#2A2A2A] text-white text-xs font-semibold border border-white/5 transition-colors"
+                  >
+                    <CreditCard className="w-4 h-4 text-[#75FF9E]" />
+                    <span className="hidden sm:inline">+ Agregar tarjeta</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 4 Period Filter Pills: Período Actual | Primera Mitad | Segunda Mitad | Personalizado */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPeriodFilterMode('fullPeriod')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                      periodFilterMode === 'fullPeriod'
+                        ? 'bg-[#00E676] text-[#003918] font-bold'
+                        : 'bg-[#252525] text-[#BACBB9] hover:text-white'
+                    }`}
+                  >
+                    Período Actual (
+                    {FinancialPeriodHelper.formatShortRange(fullPeriodRange)})
+                  </button>
+
+                  {userSettings.enableSplitPeriod && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setPeriodFilterMode('firstHalf')}
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                          periodFilterMode === 'firstHalf'
+                            ? 'bg-[#00DCF5] text-[#00363D] font-bold'
+                            : 'bg-[#252525] text-[#BACBB9] hover:text-white'
+                        }`}
+                      >
+                        Primera Mitad (
+                        {FinancialPeriodHelper.formatShortRange(firstHalfRange)}
+                        )
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPeriodFilterMode('secondHalf')}
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                          periodFilterMode === 'secondHalf'
+                            ? 'bg-[#00DCF5] text-[#00363D] font-bold'
+                            : 'bg-[#252525] text-[#BACBB9] hover:text-white'
+                        }`}
+                      >
+                        Segunda Mitad (
+                        {FinancialPeriodHelper.formatShortRange(secondHalfRange)}
+                        )
+                      </button>
+                    </>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setPeriodFilterMode('custom')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                      periodFilterMode === 'custom'
+                        ? 'bg-[#75FF9E] text-[#003918] font-bold'
+                        : 'bg-[#252525] text-[#BACBB9] hover:text-white'
+                    }`}
+                  >
+                    Personalizado
                   </button>
                 </div>
 
-                <span className="text-xs text-[#BACBB9] hidden sm:inline">
-                  {currentUser
-                    ? `Conectado a Cloud Firestore · /users/${currentUser.uid.slice(0, 6)}...`
-                    : 'Modo Vista Previa Interactiva · Conecta Firebase para persistencia en la nube'}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {selectedAccountFilter !== 'all' && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedAccountFilter('all')}
-                    className="px-3 py-2 rounded-xl bg-[#252525] text-xs text-[#00DCF5] font-semibold"
-                  >
-                    Mostrar todas las cuentas
-                  </button>
+                {periodFilterMode === 'custom' && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <input
+                      type="date"
+                      value={customStartIso}
+                      onChange={(e) => setCustomStartIso(e.target.value)}
+                      className="bg-[#252525] text-white font-mono text-xs px-2.5 py-1 rounded-lg border border-white/10"
+                    />
+                    <span className="text-[#BACBB9]">a</span>
+                    <input
+                      type="date"
+                      value={customEndIso}
+                      onChange={(e) => setCustomEndIso(e.target.value)}
+                      className="bg-[#252525] text-white font-mono text-xs px-2.5 py-1 rounded-lg border border-white/10"
+                    />
+                  </div>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setIsAddAccountOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#201F1F] hover:bg-[#2A2A2A] text-white text-xs font-semibold border border-white/5 transition-colors"
-                >
-                  <CreditCard className="w-4 h-4 text-[#75FF9E]" />
-                  <span>+ Agregar tarjeta</span>
-                </button>
               </div>
             </div>
 
@@ -1550,19 +2037,31 @@ export default function App() {
                               {tx.note}
                             </div>
                             <div className="text-xs text-[#BACBB9] truncate">
-                              {tx.accountName} · {tx.categoryName}
+                              {tx.type === 'transfer' && tx.toAccountName
+                                ? `${tx.accountName} → ${tx.toAccountName}`
+                                : tx.accountName}{' '}
+                              · {tx.categoryName} ·{' '}
+                              <span className="text-[#00DCF5]">
+                                {periodHelper.getSubPeriod(
+                                  new Date(tx.dateIso)
+                                )}
+                              </span>
                             </div>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-3 shrink-0 pl-3">
+                        <div className="flex items-center gap-2 shrink-0 pl-3">
                           <div className="text-right">
                             <div
                               className={`text-sm font-bold font-mono tabular-nums ${
-                                isInc ? 'text-[#75FF9E]' : 'text-[#FFB3AE]'
+                                isInc
+                                  ? 'text-[#75FF9E]'
+                                  : tx.type === 'transfer'
+                                  ? 'text-[#00DCF5]'
+                                  : 'text-[#FFB3AE]'
                               }`}
                             >
-                              {isInc ? '+' : '-'}
+                              {isInc ? '+' : tx.type === 'transfer' ? '⇄ ' : '-'}
                               {tx.amount.toLocaleString('es-GT', {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
@@ -1579,9 +2078,20 @@ export default function App() {
                           </div>
                           <button
                             type="button"
+                            onClick={() => {
+                              setEditingTransaction(tx);
+                              setIsCalcOpen(true);
+                            }}
+                            title="Editar y cuadrar saldo atómicamente"
+                            className="p-1.5 rounded-lg hover:bg-[#00DCF5]/20 text-[#BACBB9] hover:text-[#00DCF5] transition-all"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => handleDeleteTransaction(tx)}
-                            title="Eliminar registro"
-                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-[#A00118]/40 text-[#BACBB9] hover:text-[#FFB3AE] transition-all"
+                            title="Eliminar y revertir saldo atómicamente"
+                            className="p-1.5 rounded-lg hover:bg-[#A00118]/40 text-[#BACBB9] hover:text-[#FFB3AE] transition-all"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1732,55 +2242,123 @@ export default function App() {
         {/* ==================== VIEW 2: ANALÍTICA / REPORTES (IMAGE 1 / 2) ==================== */}
         {activeTab === 'analitica' && (
           <div className="space-y-6">
-            {/* Filter Control Hub */}
-            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-[#1C1B1B] border border-white/5 p-4 rounded-xl">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2 px-4 py-2 bg-[#201F1F] rounded-xl text-sm font-semibold text-white">
-                  <Calendar className="w-4 h-4 text-[#00DAF3]" />
-                  <span>Este Mes - Octubre 2026</span>
+            {/* Filter Control Hub with Dynamic Financial Period Selector */}
+            <div className="flex flex-col gap-4 bg-[#1C1B1B] border border-white/5 p-4 rounded-xl">
+              <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2 px-4 py-2 bg-[#201F1F] rounded-xl text-sm font-semibold text-white">
+                    <Calendar className="w-4 h-4 text-[#00DAF3]" />
+                    <span>
+                      Período {activePeriodName} ·{' '}
+                      {FinancialPeriodHelper.formatShortRange(activeDateRange)}
+                    </span>
+                  </div>
+
+                  {/* Segmented Toggle: Gastos | Ingresos | Flujo Neto */}
+                  <div className="flex items-center bg-[#0E0E0E] p-1 rounded-xl">
+                    {[
+                      { id: 'gastos', label: 'Gastos' },
+                      { id: 'ingresos', label: 'Ingresos' },
+                      { id: 'flujo', label: 'Flujo Neto' },
+                    ].map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() =>
+                          setFlowFilter(t.id as 'gastos' | 'ingresos' | 'flujo')
+                        }
+                        className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                          flowFilter === t.id
+                            ? 'bg-[#2A2A2A] text-white'
+                            : 'text-[#BACBB9] hover:text-white'
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Segmented Toggle: Gastos | Ingresos | Flujo Neto */}
-                <div className="flex items-center bg-[#0E0E0E] p-1 rounded-xl">
-                  {[
-                    { id: 'gastos', label: 'Gastos' },
-                    { id: 'ingresos', label: 'Ingresos' },
-                    { id: 'flujo', label: 'Flujo Neto' },
-                  ].map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() =>
-                        setFlowFilter(t.id as 'gastos' | 'ingresos' | 'flujo')
-                      }
-                      className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                        flowFilter === t.id
-                          ? 'bg-[#2A2A2A] text-white'
-                          : 'text-[#BACBB9] hover:text-white'
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsPeriodSettingsModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#201F1F] hover:bg-[#2A2A2A] text-[#00DCF5] text-xs font-semibold rounded-xl border border-white/5 transition-colors"
+                  >
+                    <Settings2 className="w-4 h-4" />
+                    <span>Configurar Ciclo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-[#201F1F] hover:bg-[#2A2A2A] text-white text-xs font-semibold rounded-xl transition-colors"
+                  >
+                    <Download className="w-4 h-4 text-[#FFB3AE]" />
+                    <span>Exportar PDF</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportCSV}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-[#201F1F] hover:bg-[#2A2A2A] text-white text-xs font-semibold rounded-xl transition-colors"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-[#75FF9E]" />
+                    <span>Exportar Excel (CSV)</span>
+                  </button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2.5">
+              {/* Period Filter Selector Row in Reports */}
+              <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-white/5">
                 <button
                   type="button"
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-[#201F1F] hover:bg-[#2A2A2A] text-white text-xs font-semibold rounded-xl transition-colors"
+                  onClick={() => setPeriodFilterMode('fullPeriod')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                    periodFilterMode === 'fullPeriod'
+                      ? 'bg-[#00E676] text-[#003918] font-bold'
+                      : 'bg-[#252525] text-[#BACBB9] hover:text-white'
+                  }`}
                 >
-                  <Download className="w-4 h-4 text-[#FFB3AE]" />
-                  <span>Exportar PDF</span>
+                  Período Actual (
+                  {FinancialPeriodHelper.formatShortRange(fullPeriodRange)})
                 </button>
+                {userSettings.enableSplitPeriod && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setPeriodFilterMode('firstHalf')}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                        periodFilterMode === 'firstHalf'
+                          ? 'bg-[#00DCF5] text-[#00363D] font-bold'
+                          : 'bg-[#252525] text-[#BACBB9] hover:text-white'
+                      }`}
+                    >
+                      Primera Mitad (
+                      {FinancialPeriodHelper.formatShortRange(firstHalfRange)})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPeriodFilterMode('secondHalf')}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                        periodFilterMode === 'secondHalf'
+                          ? 'bg-[#00DCF5] text-[#00363D] font-bold'
+                          : 'bg-[#252525] text-[#BACBB9] hover:text-white'
+                      }`}
+                    >
+                      Segunda Mitad (
+                      {FinancialPeriodHelper.formatShortRange(secondHalfRange)})
+                    </button>
+                  </>
+                )}
                 <button
                   type="button"
-                  onClick={handleExportCSV}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-[#201F1F] hover:bg-[#2A2A2A] text-white text-xs font-semibold rounded-xl transition-colors"
+                  onClick={() => setPeriodFilterMode('custom')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                    periodFilterMode === 'custom'
+                      ? 'bg-[#75FF9E] text-[#003918] font-bold'
+                      : 'bg-[#252525] text-[#BACBB9] hover:text-white'
+                  }`}
                 >
-                  <FileSpreadsheet className="w-4 h-4 text-[#75FF9E]" />
-                  <span>Exportar Excel (CSV)</span>
+                  Personalizado
                 </button>
               </div>
             </div>
@@ -2454,19 +3032,35 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0">
                         <span
-                          className={`font-mono font-bold tabular-nums text-sm ${
-                            isInc ? 'text-[#75FF9E]' : 'text-[#FFB3AE]'
+                          className={`font-mono font-bold tabular-nums text-sm mr-1 ${
+                            isInc
+                              ? 'text-[#75FF9E]'
+                              : tx.type === 'transfer'
+                              ? 'text-[#00DCF5]'
+                              : 'text-[#FFB3AE]'
                           }`}
                         >
-                          {isInc ? '+' : '-'}GTQ {tx.amount.toFixed(2)}
+                          {isInc ? '+' : tx.type === 'transfer' ? '⇄ ' : '-'}GTQ{' '}
+                          {tx.amount.toFixed(2)}
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingTransaction(tx);
+                            setIsCalcOpen(true);
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-[#00DCF5]/20 text-[#BACBB9] hover:text-[#00DCF5]"
+                          title="Editar y cuadrar saldo"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteTransaction(tx)}
                           className="p-1.5 rounded-lg hover:bg-[#A00118]/40 text-[#BACBB9] hover:text-[#FFB3AE]"
-                          title="Eliminar"
+                          title="Eliminar y revertir saldo"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -2646,15 +3240,136 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Modal 1: BudgetBakers Calculator New Transaction Modal (#00ACC1) */}
+      {/* Modal 1: BudgetBakers Calculator New / Edit Transaction Modal (#00ACC1) */}
       <NewTransactionModal
         isOpen={isCalcOpen}
-        onClose={() => setIsCalcOpen(false)}
+        onClose={() => {
+          setIsCalcOpen(false);
+          setEditingTransaction(null);
+        }}
         accounts={accounts}
         categories={categories}
         initialType={calcInitialType}
+        editingTransaction={editingTransaction}
         onSaveTransaction={handleSaveTransaction}
       />
+
+      {/* Modal 1B: Dynamic Financial Period Configuration Modal (UserSettingsModel) */}
+      {isPeriodSettingsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <form
+            onSubmit={handleSavePeriodSettings}
+            className="w-full max-w-md bg-[#1E1E1E] border border-white/10 rounded-2xl p-6 space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white">
+                  Configurar Ciclo Financiero y Quincenas
+                </h3>
+                <p className="text-xs text-[#BACBB9] mt-0.5">
+                  Modelo Firestore:{' '}
+                  <code className="text-[#00DCF5] font-mono">
+                    /users/&#123;userId&#125; (UserSettingsModel)
+                  </code>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPeriodSettingsModalOpen(false)}
+                className="p-1 text-[#A0A0A0] hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs text-[#BACBB9] mb-1">
+                Día de inicio del período financiero (startDayOfMonth: 1 - 31)
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={31}
+                value={userSettings.startDayOfMonth}
+                onChange={(e) =>
+                  setUserSettings((prev) => ({
+                    ...prev,
+                    startDayOfMonth: Number(e.target.value),
+                  }))
+                }
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#252525] text-sm font-mono text-white border border-white/10 focus:border-[#00DCF5] focus:outline-none"
+              />
+              <span className="text-[11px] text-[#A0A0A0] mt-1 block">
+                Ej. Si te pagan el 27, el 27 de octubre inicia el período
+                financiero <strong>2026-11 (period_2026_11)</strong>.
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-xl bg-[#252525] border border-white/5">
+              <div>
+                <div className="text-xs font-semibold text-white">
+                  Dividir período en dos quincenas (enableSplitPeriod)
+                </div>
+                <div className="text-[11px] text-[#BACBB9]">
+                  Habilita filtros de Primera Mitad y Segunda Mitad
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={userSettings.enableSplitPeriod}
+                onChange={(e) =>
+                  setUserSettings((prev) => ({
+                    ...prev,
+                    enableSplitPeriod: e.target.checked,
+                  }))
+                }
+                className="w-4 h-4 accent-[#00E676] rounded cursor-pointer"
+              />
+            </div>
+
+            {userSettings.enableSplitPeriod && (
+              <div>
+                <label className="block text-xs text-[#BACBB9] mb-1">
+                  Día de inicio de la Segunda Quincena (midMonthDay: 1 - 31)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={userSettings.midMonthDay}
+                  onChange={(e) =>
+                    setUserSettings((prev) => ({
+                      ...prev,
+                      midMonthDay: Number(e.target.value),
+                    }))
+                  }
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#252525] text-sm font-mono text-white border border-white/10 focus:border-[#00DCF5] focus:outline-none"
+                />
+                <span className="text-[11px] text-[#A0A0A0] mt-1 block">
+                  Ej. Día 13 divide el ciclo en Primera Mitad (27 Oct - 12 Nov)
+                  y Segunda Mitad (13 Nov - 26 Nov).
+                </span>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsPeriodSettingsModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-[#252525] text-xs font-semibold text-[#BACBB9]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-xl bg-[#00E676] text-[#003918] text-xs font-bold"
+              >
+                Guardar Configuración
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Modal 2: Create Account Modal */}
       {isAddAccountOpen && (
