@@ -2,5 +2,7 @@
   "name": "Wallet — Finanzas Personales",
   "description": "Plataforma de finanzas personales para gestión de cuentas, transacciones y presupuestos en tiempo real.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

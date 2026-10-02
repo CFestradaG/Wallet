@@ -57,6 +57,9 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Layers,
+  Tag,
+  FolderPlus,
 } from 'lucide-react';
 
 import {
@@ -91,38 +94,10 @@ import { NewTransactionModal } from './components/NewTransactionModal';
 type NavTab =
   | 'panel'
   | 'cuentas'
+  | 'categorias'
   | 'registros'
   | 'analitica'
   | 'presupuestos';
-
-
-const DAILY_BARS_OCT = [
-  { day: '01 Oct', inc: 195, exp: 45 },
-  { day: '02 Oct', inc: 0, exp: 32 },
-  { day: '03 Oct', inc: 0, exp: 22 },
-  { day: '04 Oct', inc: 0, exp: 60 },
-  { day: '05 Oct', inc: 0, exp: 30 },
-  { day: '06 Oct', inc: 90, exp: 40 },
-  { day: '07 Oct', inc: 0, exp: 28 },
-  { day: '08 Oct', inc: 0, exp: 50 },
-  { day: '09 Oct', inc: 0, exp: 20 },
-  { day: '10 Oct', inc: 0, exp: 35 },
-  { day: '11 Oct', inc: 0, exp: 42 },
-  { day: '12 Oct', inc: 0, exp: 65 },
-  { day: '14 Oct', inc: 0, exp: 25 },
-  { day: '15 Oct', inc: 190, exp: 70 },
-  { day: '16 Oct', inc: 0, exp: 35 },
-  { day: '18 Oct', inc: 0, exp: 50 },
-  { day: '20 Oct', inc: 0, exp: 28 },
-  { day: '21 Oct', inc: 0, exp: 58 },
-  { day: '22 Oct', inc: 60, exp: 25 },
-  { day: '24 Oct', inc: 0, exp: 45 },
-  { day: '25 Oct', inc: 0, exp: 30 },
-  { day: '27 Oct', inc: 0, exp: 55 },
-  { day: '29 Oct', inc: 0, exp: 50 },
-  { day: '30 Oct', inc: 0, exp: 70 },
-  { day: '31 Oct', inc: 0, exp: 35 },
-];
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -150,12 +125,60 @@ export default function App() {
     userId: 'demo',
     yearMonth: 'period_2026_11',
     periodId: 'period_2026_11',
-    totalIncome: 12500.0,
-    totalExpense: 6430.0,
-    netCashFlow: 6070.0,
-    savingsRate: 48.5,
+    totalIncome: 0.0,
+    totalExpense: 0.0,
+    netCashFlow: 0.0,
+    savingsRate: 0.0,
     currency: 'GTQ',
   });
+
+  // Panel widget cards customization
+  const [panelWidgets, setPanelWidgets] = useState<{
+    gauges: boolean;
+    balanceTrend: boolean;
+    expenseStructure: boolean;
+    accounts: boolean;
+    recentTransactions: boolean;
+    activeBudgets: boolean;
+  }>(() => {
+    try {
+      const saved = localStorage.getItem('wallet_panel_widgets');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      gauges: true,
+      balanceTrend: true,
+      expenseStructure: true,
+      accounts: true,
+      recentTransactions: true,
+      activeBudgets: true,
+    };
+  });
+  const [isCustomizePanelOpen, setIsCustomizePanelOpen] = useState(false);
+
+  const togglePanelWidget = (key: keyof typeof panelWidgets) => {
+    setPanelWidgets((prev) => {
+      const updated = { ...prev, [key]: !prev[key] };
+      localStorage.setItem('wallet_panel_widgets', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // In-app deletion confirmation
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{
+    type: 'category' | 'account' | 'budget';
+    id: string;
+    name: string;
+  } | null>(null);
+
+  // Unified Filter State (Used by both Registros and Analítica)
+  const [filterPeriodPreset, setFilterPeriodPreset] = useState<
+    'cycle' | 'firstHalf' | 'secondHalf' | 'all' | 'custom'
+  >('cycle');
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [filterTxType, setFilterTxType] = useState<
+    'all' | 'expense' | 'income' | 'transfer'
+  >('all');
 
   // Dynamic Financial Period Filter State (Requerimiento 2)
   const [periodFilterMode, setPeriodFilterMode] =
@@ -190,16 +213,44 @@ export default function App() {
   // New Account Form State
   const [newAccName, setNewAccName] = useState<string>('');
   const [newAccType, setNewAccType] = useState<AccountType>('bank');
-  const [newAccBalance, setNewAccBalance] = useState<string>('1500.00');
+  const [newAccBalance, setNewAccBalance] = useState<string>('0.00');
   const [newAccSubtitle, setNewAccSubtitle] = useState<string>(
     'Cuenta Monetaria GTQ'
   );
 
-  // New Budget Form State
+  // Edit Account Form State
+  const [editingAccount, setEditingAccount] = useState<WalletAccount | null>(null);
+  const [isEditAccountOpen, setIsEditAccountOpen] = useState<boolean>(false);
+  const [editAccName, setEditAccName] = useState<string>('');
+  const [editAccType, setEditAccType] = useState<AccountType>('bank');
+  const [editAccBalance, setEditAccBalance] = useState<string>('0.00');
+  const [editAccSubtitle, setEditAccSubtitle] = useState<string>('');
+
+  // Category Management State
+  const [isAddCategoryOpen, setIsAddCategoryOpen] = useState<boolean>(false);
+  const [editingCategory, setEditingCategory] = useState<WalletCategory | null>(null);
+  const [isEditCategoryOpen, setIsEditCategoryOpen] = useState<boolean>(false);
+  const [catFormName, setCatFormName] = useState<string>('');
+  const [catFormSubtitle, setCatFormSubtitle] = useState<string>('');
+  const [catFormType, setCatFormType] = useState<'expense' | 'income'>('expense');
+  const [catFormIcon, setCatFormIcon] = useState<string>('utensils');
+  const [catFormColor, setCatFormColor] = useState<string>('#00E676');
+  const [catFormSubcategories, setCatFormSubcategories] = useState<string[]>([]);
+  const [catFormNewSubInput, setCatFormNewSubInput] = useState<string>('');
+  const [catFilterTab, setCatFilterTab] = useState<'all' | 'expense' | 'income'>('all');
+
+  // Budget Management State
   const [newBudgetName, setNewBudgetName] = useState<string>('');
   const [newBudgetLimit, setNewBudgetLimit] = useState<string>('1500.00');
   const [newBudgetCategory, setNewBudgetCategory] =
     useState<string>('cat_comida');
+  const [newBudgetPeriod, setNewBudgetPeriod] = useState<string>('');
+  const [editingBudget, setEditingBudget] = useState<WalletBudget | null>(null);
+  const [isEditBudgetOpen, setIsEditBudgetOpen] = useState<boolean>(false);
+  const [editBudgetName, setEditBudgetName] = useState<string>('');
+  const [editBudgetLimit, setEditBudgetLimit] = useState<string>('1000.00');
+  const [editBudgetCategory, setEditBudgetCategory] = useState<string>('cat_comida');
+  const [editBudgetPeriod, setEditBudgetPeriod] = useState<string>('');
 
   const showToast = (msg: string) => {
     setStatusBanner(msg);
@@ -228,20 +279,20 @@ export default function App() {
         });
         await ensureUserSeededInFirestore(user);
       } else {
-        // En modo demostración (sin sesión), mostrar datos de muestra
+        // En modo demostración (sin sesión), mostrar CERO datos demo
         setAccounts(INITIAL_ACCOUNTS_SEED.map((a) => ({ ...a, userId: 'demo' })));
         setCategories(INITIAL_CATEGORIES_SEED.map((c) => ({ ...c, userId: 'demo' })));
-        setBudgets(INITIAL_BUDGETS_SEED.map((b) => ({ ...b, userId: 'demo' })));
-        setTransactions(INITIAL_TRANSACTIONS_SEED.map((t) => ({ ...t, userId: 'demo' })));
+        setBudgets([]);
+        setTransactions([]);
         setSummary({
           id: 'period_2026_11',
           userId: 'demo',
           yearMonth: 'period_2026_11',
           periodId: 'period_2026_11',
-          totalIncome: 12500.0,
-          totalExpense: 6430.0,
-          netCashFlow: 6070.0,
-          savingsRate: 48.5,
+          totalIncome: 0.0,
+          totalExpense: 0.0,
+          netCashFlow: 0.0,
+          savingsRate: 0.0,
           currency: 'GTQ',
         });
       }
@@ -305,10 +356,11 @@ export default function App() {
           });
         }
 
-        // Sembrar categorías estándar para que el usuario pueda registrar gastos
+        // Sembrar categorías estándar con sus SUBCATEGORÍAS integradas
         for (const cat of INITIAL_CATEGORIES_SEED) {
           batch1.set(doc(db, 'users', uid, 'categories', cat.id), {
             ...cat,
+            subcategories: cat.subcategories || [],
             userId: uid,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
@@ -332,28 +384,105 @@ export default function App() {
         await batch1.commit();
         showToast('¡Bienvenido! Cuentas listas con saldo en Q0.00');
       } else {
-        // Si el usuario ya existía pero tiene transacciones de prueba legadas (tx_seed_*), limpiarlas
+        // Limpiar únicamente transacciones de prueba legadas si tuvieran el prefijo tx_seed_
         const txSnap = await getDocs(
           query(collection(db, 'users', uid, 'transactions'), where('userId', '==', uid))
         );
-        const legacySeeds = txSnap.docs.filter((d) => d.id.startsWith('tx_'));
+        const legacySeeds = txSnap.docs.filter((d) => d.id.startsWith('tx_seed_'));
         if (legacySeeds.length > 0) {
           const cleanBatch = writeBatch(db);
           for (const d of legacySeeds) {
             cleanBatch.delete(d.ref);
           }
-          const accSnap = await getDocs(
-            query(collection(db, 'users', uid, 'accounts'), where('userId', '==', uid))
-          );
-          for (const aDoc of accSnap.docs) {
-            cleanBatch.update(aDoc.ref, {
+          await cleanBatch.commit();
+        }
+
+        // Asegurar que las cuentas básicas existan en Firestore para este usuario
+        const accSnap = await getDocs(
+          query(collection(db, 'users', uid, 'accounts'), where('userId', '==', uid))
+        );
+        if (accSnap.empty) {
+          const accBatch = writeBatch(db);
+          const STARTER_ACCOUNTS = [
+            {
+              id: 'acc_efectivo',
+              name: 'Efectivo',
+              type: 'cash' as const,
               balance: 0.0,
               currentBalance: 0.0,
+              currency: 'GTQ' as const,
+              colorHex: '#00DCF5',
+              iconName: 'payments',
+              subtitle: 'Billetera / Efectivo disponible',
+              userId: uid,
+            },
+            {
+              id: 'acc_banco',
+              name: 'Cuenta Bancaria',
+              type: 'bank' as const,
+              balance: 0.0,
+              currentBalance: 0.0,
+              currency: 'GTQ' as const,
+              colorHex: '#00E676',
+              iconName: 'account_balance',
+              subtitle: 'Cuenta monetaria o ahorros',
+              userId: uid,
+            },
+          ];
+          for (const acc of STARTER_ACCOUNTS) {
+            accBatch.set(doc(db, 'users', uid, 'accounts', acc.id), {
+              ...acc,
+              createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             });
           }
-          await cleanBatch.commit();
-          showToast('Datos de prueba limpiados. Cuentas restablecidas a cero.');
+          await accBatch.commit();
+        }
+
+        // Verificar y sincronizar categorías genéricas estándar en Firestore para el perfil del usuario
+        const catSnap = await getDocs(
+          query(collection(db, 'users', uid, 'categories'), where('userId', '==', uid))
+        );
+        const existingCatIds = new Set(catSnap.docs.map((d) => d.id));
+        const catBatch = writeBatch(db);
+        let hasNewCatSeed = false;
+
+        // Sembrar las categorías que falten (incluyendo las nuevas de Ingresos y Gastos)
+        for (const cat of INITIAL_CATEGORIES_SEED) {
+          if (!existingCatIds.has(cat.id)) {
+            hasNewCatSeed = true;
+            catBatch.set(doc(db, 'users', uid, 'categories', cat.id), {
+              id: cat.id,
+              userId: uid,
+              name: cat.name,
+              subtitle: cat.subtitle,
+              iconName: cat.iconName,
+              colorHex: cat.colorHex,
+              type: cat.type,
+              subcategories: cat.subcategories || [],
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          }
+        }
+
+        // Si ya existían categorías sin subcategorías, completarlas
+        for (const cDoc of catSnap.docs) {
+          const cData = cDoc.data();
+          if (!cData.subcategories || cData.subcategories.length === 0) {
+            const seedCat = INITIAL_CATEGORIES_SEED.find((s) => s.id === cDoc.id || s.name === cData.name);
+            if (seedCat && seedCat.subcategories) {
+              hasNewCatSeed = true;
+              catBatch.update(cDoc.ref, {
+                subcategories: seedCat.subcategories,
+                updatedAt: serverTimestamp(),
+              });
+            }
+          }
+        }
+
+        if (hasNewCatSeed) {
+          await catBatch.commit();
         }
       }
     } catch (error) {
@@ -586,22 +715,146 @@ export default function App() {
         selectedAccountFilter === 'all' ||
         t.accountId === selectedAccountFilter ||
         t.toAccountId === selectedAccountFilter;
+      const matchesCategory =
+        filterCategory === 'all' || t.categoryId === filterCategory;
+      const matchesType =
+        filterTxType === 'all' || t.type === filterTxType;
       const matchesSearch =
         !searchTerm.trim() ||
         t.note.toLowerCase().includes(searchTerm.toLowerCase()) ||
         t.categoryName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.accountName.toLowerCase().includes(searchTerm.toLowerCase());
+        t.accountName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        Boolean(t.subcategory && t.subcategory.toLowerCase().includes(searchTerm.toLowerCase()));
+
+      let matchesPeriod = true;
       const txDate = new Date(t.dateIso);
-      const matchesPeriod = periodHelper.isDateInRange(txDate, activeDateRange);
-      return matchesAcc && matchesSearch && matchesPeriod;
+      if (filterPeriodPreset === 'cycle') {
+        matchesPeriod = periodHelper.isDateInRange(txDate, fullPeriodRange);
+      } else if (filterPeriodPreset === 'firstHalf') {
+        matchesPeriod = periodHelper.isDateInRange(txDate, firstHalfRange);
+      } else if (filterPeriodPreset === 'secondHalf') {
+        matchesPeriod = periodHelper.isDateInRange(txDate, secondHalfRange);
+      } else if (filterPeriodPreset === 'custom') {
+        matchesPeriod = periodHelper.isDateInRange(txDate, customRangeObj);
+      } else if (filterPeriodPreset === 'all') {
+        matchesPeriod = true;
+      }
+
+      return matchesAcc && matchesCategory && matchesType && matchesSearch && matchesPeriod;
     });
   }, [
     transactions,
     selectedAccountFilter,
+    filterCategory,
+    filterTxType,
     searchTerm,
+    filterPeriodPreset,
     periodHelper,
-    activeDateRange,
+    fullPeriodRange,
+    firstHalfRange,
+    secondHalfRange,
+    customRangeObj,
   ]);
+
+  // Dynamic Financial Metrics computed from the filtered transactions
+  const computedMetrics = useMemo(() => {
+    let inc = 0;
+    let exp = 0;
+    for (const t of filteredTransactions) {
+      if (t.type === 'income') inc += t.amount;
+      if (t.type === 'expense') exp += t.amount;
+    }
+    const net = inc - exp;
+    const savings = inc > 0 ? Number(((net / inc) * 100).toFixed(1)) : 0;
+    return {
+      totalIncome: inc,
+      totalExpense: exp,
+      netCashFlow: net,
+      savingsRate: savings,
+    };
+  }, [filteredTransactions]);
+
+  // Dynamic Expense Structure by Category (Zero Mock Data)
+  const expenseBreakdown = useMemo(() => {
+    const expenses = filteredTransactions.filter((t) => t.type === 'expense');
+    const total = expenses.reduce((sum, t) => sum + t.amount, 0);
+    const catMap = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        icon: string;
+        color: string;
+        amount: number;
+        count: number;
+      }
+    >();
+
+    for (const tx of expenses) {
+      const existing = catMap.get(tx.categoryId) || {
+        id: tx.categoryId,
+        name: tx.categoryName,
+        icon: tx.categoryIcon,
+        color: tx.categoryColor || '#00DCF5',
+        amount: 0,
+        count: 0,
+      };
+      existing.amount += tx.amount;
+      existing.count += 1;
+      catMap.set(tx.categoryId, existing);
+    }
+
+    const items = Array.from(catMap.values())
+      .sort((a, b) => b.amount - a.amount)
+      .map((item) => ({
+        ...item,
+        percentage:
+          total > 0 ? Number(((item.amount / total) * 100).toFixed(1)) : 0,
+      }));
+
+    return { total, items };
+  }, [filteredTransactions]);
+
+  // Dynamic Daily Cash Flow Data from real transactions (Zero Mock Data)
+  const dailyCashFlowData = useMemo(() => {
+    const dayMap = new Map<
+      string,
+      { dayLabel: string; date: string; inc: number; exp: number }
+    >();
+    const sorted = [...filteredTransactions].sort((a, b) =>
+      a.dateIso.localeCompare(b.dateIso)
+    );
+    for (const tx of sorted) {
+      const dayKey = tx.dateIso.slice(0, 10);
+      const dObj = new Date(tx.dateIso);
+      const dayLabel = `${dObj.getDate().toString().padStart(2, '0')} ${
+        [
+          'Ene',
+          'Feb',
+          'Mar',
+          'Abr',
+          'May',
+          'Jun',
+          'Jul',
+          'Ago',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dic',
+        ][dObj.getMonth()]
+      }`;
+      const existing = dayMap.get(dayKey) || {
+        dayLabel,
+        date: dayKey,
+        inc: 0,
+        exp: 0,
+      };
+      if (tx.type === 'income') existing.inc += tx.amount;
+      if (tx.type === 'expense') existing.exp += tx.amount;
+      dayMap.set(dayKey, existing);
+    }
+    return Array.from(dayMap.values());
+  }, [filteredTransactions]);
 
   // Handlers: Authentication
   const handleGoogleLogin = async () => {
@@ -652,6 +905,7 @@ export default function App() {
     accountId: string;
     toAccountId?: string;
     categoryId: string;
+    subcategory?: string;
     note: string;
     dateIso: string;
   }) => {
@@ -727,6 +981,9 @@ export default function App() {
             periodId: targetPeriodId,
             updatedAt: serverTimestamp(),
           };
+          if (data.subcategory) {
+            txPayload.subcategory = data.subcategory.slice(0, 80);
+          }
           if (data.type === 'transfer' && toAcc) {
             txPayload.toAccountId = toAcc.id;
             txPayload.toAccountName = toAcc.name.slice(0, 80);
@@ -745,8 +1002,8 @@ export default function App() {
             const fallbackAcc = accounts.find((a) => a.id === accId);
             const currentBal = snap && snap.exists()
               ? Number(
-                  snap.data().currentBalance ??
-                    snap.data().balance ??
+                  (snap.data() as Record<string, unknown>).currentBalance ??
+                    (snap.data() as Record<string, unknown>).balance ??
                     fallbackAcc?.balance ??
                     0
                 )
@@ -755,11 +1012,28 @@ export default function App() {
               (currentBal + accountDeltas[accId]).toFixed(2)
             );
 
-            firestoreTx.update(doc(db, 'users', uid, 'accounts', accId), {
-              currentBalance: updatedBalance,
-              balance: updatedBalance,
-              updatedAt: serverTimestamp(),
-            });
+            if (snap && snap.exists()) {
+              firestoreTx.update(doc(db, 'users', uid, 'accounts', accId), {
+                currentBalance: updatedBalance,
+                balance: updatedBalance,
+                updatedAt: serverTimestamp(),
+              });
+            } else {
+              firestoreTx.set(doc(db, 'users', uid, 'accounts', accId), {
+                id: accId,
+                userId: uid,
+                name: fallbackAcc?.name || 'Cuenta',
+                type: fallbackAcc?.type || 'cash',
+                balance: updatedBalance,
+                currentBalance: updatedBalance,
+                currency: 'GTQ',
+                colorHex: fallbackAcc?.colorHex || '#00DCF5',
+                iconName: fallbackAcc?.iconName || 'payments',
+                subtitle: fallbackAcc?.subtitle || 'Cuenta principal',
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              });
+            }
           }
 
           // FASE 4: Actualizar o crear el resumen del período financiero en /summaries/{periodId}
@@ -837,6 +1111,7 @@ export default function App() {
         categoryName: cat.name,
         categoryIcon: cat.iconName,
         categoryColor: cat.colorHex,
+        subcategory: data.subcategory,
         type: data.type,
         amount: data.amount,
         currency: 'GTQ',
@@ -925,7 +1200,7 @@ export default function App() {
     });
   };
 
-  // Handler: Add Account
+  // --- ACCOUNT MANAGEMENT ---
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAccName.trim()) return;
@@ -954,6 +1229,7 @@ export default function App() {
           name: newAccName.trim().slice(0, 80),
           type: newAccType,
           balance: bal,
+          currentBalance: bal,
           currency: 'GTQ',
           colorHex: colorMap[newAccType],
           iconName: iconMap[newAccType],
@@ -978,6 +1254,7 @@ export default function App() {
           name: newAccName.trim(),
           type: newAccType,
           balance: bal,
+          currentBalance: bal,
           currency: 'GTQ',
           colorHex: colorMap[newAccType],
           iconName: iconMap[newAccType],
@@ -990,7 +1267,281 @@ export default function App() {
     setIsAddAccountOpen(false);
   };
 
-  // Handler: Add Budget
+  const handleOpenEditAccount = (acc: WalletAccount) => {
+    setEditingAccount(acc);
+    setEditAccName(acc.name);
+    setEditAccType(acc.type);
+    setEditAccBalance(Number(acc.currentBalance ?? acc.balance ?? 0).toFixed(2));
+    setEditAccSubtitle(acc.subtitle || '');
+    setIsEditAccountOpen(true);
+  };
+
+  const handleUpdateAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAccount || !editAccName.trim()) return;
+    const newBal = parseFloat(editAccBalance) || 0;
+    const colorMap: Record<AccountType, string> = {
+      cash: '#00DCF5',
+      bank: '#00E676',
+      credit_card: '#FF5252',
+      savings: '#75FF9E',
+      investment: '#9C27B0',
+    };
+    const iconMap: Record<AccountType, string> = {
+      cash: 'payments',
+      bank: 'account_balance',
+      credit_card: 'credit_card',
+      savings: 'account_balance',
+      investment: 'payments',
+    };
+
+    if (currentUser) {
+      const uid = currentUser.uid;
+      try {
+        await updateDoc(doc(db, 'users', uid, 'accounts', editingAccount.id), {
+          name: editAccName.trim().slice(0, 80),
+          type: editAccType,
+          balance: newBal,
+          currentBalance: newBal,
+          colorHex: colorMap[editAccType],
+          iconName: iconMap[editAccType],
+          subtitle: editAccSubtitle.trim().slice(0, 100),
+          updatedAt: serverTimestamp(),
+        });
+        showToast(`Cuenta "${editAccName}" actualizada`);
+      } catch (err) {
+        handleFirestoreError(
+          err,
+          OperationType.UPDATE,
+          `users/${uid}/accounts/${editingAccount.id}`
+        );
+      }
+    } else {
+      setAccounts((prev) =>
+        prev.map((a) =>
+          a.id === editingAccount.id
+            ? {
+                ...a,
+                name: editAccName.trim(),
+                type: editAccType,
+                balance: newBal,
+                currentBalance: newBal,
+                colorHex: colorMap[editAccType],
+                iconName: iconMap[editAccType],
+                subtitle: editAccSubtitle.trim(),
+              }
+            : a
+        )
+      );
+      showToast(`Cuenta "${editAccName}" actualizada`);
+    }
+    setIsEditAccountOpen(false);
+    setEditingAccount(null);
+  };
+
+  const handleDeleteAccount = (acc: WalletAccount) => {
+    setDeleteConfirmTarget({
+      type: 'account',
+      id: acc.id,
+      name: acc.name,
+    });
+  };
+
+  // --- CATEGORY & SUBCATEGORY MANAGEMENT ---
+  const handleOpenAddCategory = () => {
+    setCatFormName('');
+    setCatFormSubtitle('');
+    setCatFormType('expense');
+    setCatFormIcon('utensils');
+    setCatFormColor('#00E676');
+    setCatFormSubcategories([]);
+    setCatFormNewSubInput('');
+    setIsAddCategoryOpen(true);
+  };
+
+  const handleOpenEditCategory = (cat: WalletCategory) => {
+    setEditingCategory(cat);
+    setCatFormName(cat.name);
+    setCatFormSubtitle(cat.subtitle || '');
+    setCatFormType(cat.type);
+    setCatFormIcon(cat.iconName);
+    setCatFormColor(cat.colorHex);
+    setCatFormSubcategories([...(cat.subcategories || [])]);
+    setCatFormNewSubInput('');
+    setIsEditCategoryOpen(true);
+  };
+
+  const handleAddSubcategoryTag = () => {
+    const trimmed = catFormNewSubInput.trim();
+    if (!trimmed || catFormSubcategories.includes(trimmed)) return;
+    setCatFormSubcategories((prev) => [...prev, trimmed]);
+    setCatFormNewSubInput('');
+  };
+
+  const handleRemoveSubcategoryTag = (subToRemove: string) => {
+    setCatFormSubcategories((prev) => prev.filter((s) => s !== subToRemove));
+  };
+
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!catFormName.trim()) return;
+    const catId = `cat_${Date.now()}`;
+    const newCatData: Omit<WalletCategory, 'createdAt' | 'updatedAt'> = {
+      id: catId,
+      userId: currentUser?.uid || 'demo',
+      name: catFormName.trim().slice(0, 60),
+      subtitle: catFormSubtitle.trim().slice(0, 120),
+      type: catFormType,
+      iconName: catFormIcon,
+      colorHex: catFormColor,
+      subcategories: catFormSubcategories,
+    };
+
+    if (currentUser) {
+      const uid = currentUser.uid;
+      try {
+        await setDoc(doc(db, 'users', uid, 'categories', catId), {
+          ...newCatData,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        showToast(
+          `Categoría "${newCatData.name}" creada con ${newCatData.subcategories.length} subcategorías`
+        );
+      } catch (err) {
+        handleFirestoreError(
+          err,
+          OperationType.CREATE,
+          `users/${uid}/categories/${catId}`
+        );
+      }
+    } else {
+      setCategories((prev) => [...prev, newCatData as WalletCategory]);
+      showToast(`Categoría "${newCatData.name}" agregada`);
+    }
+    setIsAddCategoryOpen(false);
+  };
+
+  const handleUpdateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategory || !catFormName.trim()) return;
+
+    if (currentUser) {
+      const uid = currentUser.uid;
+      try {
+        await updateDoc(doc(db, 'users', uid, 'categories', editingCategory.id), {
+          name: catFormName.trim().slice(0, 60),
+          subtitle: catFormSubtitle.trim().slice(0, 120),
+          type: catFormType,
+          iconName: catFormIcon,
+          colorHex: catFormColor,
+          subcategories: catFormSubcategories,
+          updatedAt: serverTimestamp(),
+        });
+        showToast(`Categoría "${catFormName}" actualizada`);
+      } catch (err) {
+        handleFirestoreError(
+          err,
+          OperationType.UPDATE,
+          `users/${uid}/categories/${editingCategory.id}`
+        );
+      }
+    } else {
+      setCategories((prev) =>
+        prev.map((c) =>
+          c.id === editingCategory.id
+            ? {
+                ...c,
+                name: catFormName.trim(),
+                subtitle: catFormSubtitle.trim(),
+                type: catFormType,
+                iconName: catFormIcon,
+                colorHex: catFormColor,
+                subcategories: catFormSubcategories,
+              }
+            : c
+        )
+      );
+      showToast(`Categoría "${catFormName}" actualizada`);
+    }
+    setIsEditCategoryOpen(false);
+    setEditingCategory(null);
+  };
+
+  const handleDeleteCategory = (cat: WalletCategory) => {
+    setDeleteConfirmTarget({
+      type: 'category',
+      id: cat.id,
+      name: cat.name,
+    });
+  };
+
+  const handleQuickAddSubcategoryToCategory = async (
+    cat: WalletCategory,
+    newSubName: string
+  ) => {
+    const trimmed = newSubName.trim();
+    if (!trimmed) return;
+    const currentSubs = cat.subcategories || [];
+    if (currentSubs.includes(trimmed)) return;
+    const updatedSubs = [...currentSubs, trimmed];
+
+    if (currentUser) {
+      const uid = currentUser.uid;
+      try {
+        await updateDoc(doc(db, 'users', uid, 'categories', cat.id), {
+          subcategories: updatedSubs,
+          updatedAt: serverTimestamp(),
+        });
+        showToast(`Subcategoría "${trimmed}" añadida a ${cat.name}`);
+      } catch (err) {
+        handleFirestoreError(
+          err,
+          OperationType.UPDATE,
+          `users/${uid}/categories/${cat.id}`
+        );
+      }
+    } else {
+      setCategories((prev) =>
+        prev.map((c) =>
+          c.id === cat.id ? { ...c, subcategories: updatedSubs } : c
+        )
+      );
+      showToast(`Subcategoría "${trimmed}" añadida a ${cat.name}`);
+    }
+  };
+
+  const handleRestoreDefaultCategories = async () => {
+    if (!currentUser) {
+      setCategories(INITIAL_CATEGORIES_SEED.map((c) => ({ ...c, userId: 'demo' })));
+      showToast('Categorías predeterminadas restauradas en memoria');
+      return;
+    }
+    const uid = currentUser.uid;
+    const catBatch = writeBatch(db);
+    for (const cat of INITIAL_CATEGORIES_SEED) {
+      catBatch.set(doc(db, 'users', uid, 'categories', cat.id), {
+        id: cat.id,
+        userId: uid,
+        name: cat.name,
+        subtitle: cat.subtitle,
+        iconName: cat.iconName,
+        colorHex: cat.colorHex,
+        type: cat.type,
+        subcategories: cat.subcategories || [],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+    try {
+      await catBatch.commit();
+      showToast('Categorías y subcategorías genéricas estándar restauradas en tu perfil');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `users/${uid}/categories`);
+    }
+  };
+
+  // --- BUDGET MANAGEMENT ---
   const handleCreateBudget = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBudgetName.trim()) return;
@@ -998,6 +1549,7 @@ export default function App() {
     const limit = Math.max(1, parseFloat(newBudgetLimit) || 1000);
     const cat =
       categories.find((c) => c.id === newBudgetCategory) || categories[0];
+    const budgetPeriod = newBudgetPeriod || activeFirestorePeriodId;
 
     if (currentUser) {
       const uid = currentUser.uid;
@@ -1009,13 +1561,13 @@ export default function App() {
           limitAmount: limit,
           spentAmount: 0,
           currency: 'GTQ',
-          period: '2026_10',
+          period: budgetPeriod,
           iconName: cat.iconName,
           colorHex: cat.colorHex,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
-        showToast(`Presupuesto "${newBudgetName}" guardado en Firestore`);
+        showToast(`Presupuesto "${newBudgetName}" guardado en Firestore (${budgetPeriod})`);
       } catch (err) {
         handleFirestoreError(
           err,
@@ -1034,7 +1586,7 @@ export default function App() {
           limitAmount: limit,
           spentAmount: 0,
           currency: 'GTQ',
-          period: '2026_10',
+          period: budgetPeriod,
           iconName: cat.iconName,
           colorHex: cat.colorHex,
         },
@@ -1043,6 +1595,84 @@ export default function App() {
     }
     setNewBudgetName('');
     setIsAddBudgetOpen(false);
+  };
+
+  const handleOpenEditBudget = (b: WalletBudget) => {
+    setEditingBudget(b);
+    setEditBudgetName(b.name);
+    setEditBudgetLimit(b.limitAmount.toFixed(2));
+    setEditBudgetCategory(b.categoryId);
+    setEditBudgetPeriod(b.period || activeFirestorePeriodId);
+    setIsEditBudgetOpen(true);
+  };
+
+  const handleUpdateBudget = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBudget || !editBudgetName.trim()) return;
+    const limit = Math.max(1, parseFloat(editBudgetLimit) || 1000);
+    const cat =
+      categories.find((c) => c.id === editBudgetCategory) || categories[0];
+
+    if (currentUser) {
+      const uid = currentUser.uid;
+      try {
+        await updateDoc(doc(db, 'users', uid, 'budgets', editingBudget.id), {
+          name: editBudgetName.trim().slice(0, 80),
+          categoryId: cat.id,
+          limitAmount: limit,
+          period: editBudgetPeriod || activeFirestorePeriodId,
+          iconName: cat.iconName,
+          colorHex: cat.colorHex,
+          updatedAt: serverTimestamp(),
+        });
+        showToast(`Presupuesto "${editBudgetName}" actualizado`);
+      } catch (err) {
+        handleFirestoreError(
+          err,
+          OperationType.UPDATE,
+          `users/${uid}/budgets/${editingBudget.id}`
+        );
+      }
+    } else {
+      setBudgets((prev) =>
+        prev.map((b) =>
+          b.id === editingBudget.id
+            ? {
+                ...b,
+                name: editBudgetName.trim(),
+                categoryId: cat.id,
+                limitAmount: limit,
+                period: editBudgetPeriod || activeFirestorePeriodId,
+                iconName: cat.iconName,
+                colorHex: cat.colorHex,
+              }
+            : b
+        )
+      );
+      showToast(`Presupuesto "${editBudgetName}" actualizado`);
+    }
+    setIsEditBudgetOpen(false);
+    setEditingBudget(null);
+  };
+
+  const handleDeleteBudget = async (b: WalletBudget) => {
+    if (!confirm(`¿Eliminar el presupuesto "${b.name}"?`)) return;
+    if (currentUser) {
+      const uid = currentUser.uid;
+      try {
+        await deleteDoc(doc(db, 'users', uid, 'budgets', b.id));
+        showToast(`Presupuesto "${b.name}" eliminado`);
+      } catch (err) {
+        handleFirestoreError(
+          err,
+          OperationType.DELETE,
+          `users/${uid}/budgets/${b.id}`
+        );
+      }
+    } else {
+      setBudgets((prev) => prev.filter((item) => item.id !== b.id));
+      showToast(`Presupuesto "${b.name}" eliminado`);
+    }
   };
 
   // Handler: Delete Transaction Atomically (Reverting currentBalance in involved accounts and summary)
@@ -1075,7 +1705,9 @@ export default function App() {
             const snap = accSnaps[accId];
             if (snap && snap.exists()) {
               const cur = Number(
-                snap.data().currentBalance ?? snap.data().balance ?? 0
+                (snap.data() as Record<string, unknown>).currentBalance ??
+                  (snap.data() as Record<string, unknown>).balance ??
+                  0
               );
               const reverted = Number((cur + accountDeltas[accId]).toFixed(2));
               firestoreTx.update(doc(db, 'users', uid, 'accounts', accId), {
@@ -1275,6 +1907,7 @@ export default function App() {
           {[
             { id: 'panel', label: 'Panel' },
             { id: 'cuentas', label: 'Cuentas' },
+            { id: 'categorias', label: 'Categorías' },
             { id: 'registros', label: 'Registros' },
             { id: 'analitica', label: 'Analítica' },
             { id: 'presupuestos', label: 'Presupuestos' },
@@ -1344,6 +1977,7 @@ export default function App() {
         {[
           { id: 'panel', label: 'Panel' },
           { id: 'cuentas', label: 'Cuentas' },
+          { id: 'categorias', label: 'Categorías' },
           { id: 'registros', label: 'Registros' },
           { id: 'analitica', label: 'Analítica' },
           { id: 'presupuestos', label: 'Presupuestos' },
@@ -2203,7 +2837,10 @@ export default function App() {
                         Disponible hoy
                       </span>
                       <span className="text-sm font-bold font-mono tabular-nums text-white mt-0.5 block">
-                        114.46 GTQ
+                        {Math.max(0, totalNetBalance).toLocaleString('es-GT', {
+                          minimumFractionDigits: 2,
+                        })}{' '}
+                        GTQ
                       </span>
                     </div>
                     <div className="p-3 rounded-xl bg-[#2A2A2A]">
@@ -2211,7 +2848,7 @@ export default function App() {
                         Días restantes
                       </span>
                       <span className="text-sm font-bold font-mono tabular-nums text-[#75FF9E] mt-0.5 block">
-                        28 días
+                        Ciclo Activo
                       </span>
                     </div>
                   </div>
@@ -2227,17 +2864,18 @@ export default function App() {
                       </h3>
                     </div>
                     <span className="text-[11px] text-[#BACBB9]">
-                      Sin comisiones
+                      Entre tus cuentas
                     </span>
                   </div>
 
                   <div className="space-y-2 text-xs">
                     <div className="flex items-center justify-between p-3 rounded-xl bg-[#2A2A2A]">
-                      <span className="text-[#BACBB9]">De: Efectivo</span>
+                      <span className="text-[#BACBB9]">
+                        Origen: {accounts[0]?.name || 'Efectivo'}
+                      </span>
                       <span className="font-mono font-semibold text-white">
                         {(
-                          accounts.find((a) => a.id === 'acc_efectivo')
-                            ?.balance ?? 4990.9
+                          accounts[0]?.currentBalance ?? accounts[0]?.balance ?? 0
                         ).toLocaleString('es-GT', {
                           minimumFractionDigits: 2,
                         })}{' '}
@@ -2246,13 +2884,11 @@ export default function App() {
                     </div>
                     <div className="flex items-center justify-between p-3 rounded-xl bg-[#2A2A2A]">
                       <span className="text-[#BACBB9]">
-                        Para: BAC Credomatic
+                        Destino: {accounts[1]?.name || 'Cuenta Bancaria'}
                       </span>
-                      <span className="font-mono font-semibold text-[#FFB3AE]">
-                        Deuda:{' '}
-                        {Math.abs(
-                          accounts.find((a) => a.id === 'acc_bac')?.balance ??
-                            -7807.7
+                      <span className="font-mono font-semibold text-[#75FF9E]">
+                        {(
+                          accounts[1]?.currentBalance ?? accounts[1]?.balance ?? 0
                         ).toLocaleString('es-GT', {
                           minimumFractionDigits: 2,
                         })}{' '}
@@ -2263,11 +2899,14 @@ export default function App() {
 
                   <button
                     type="button"
-                    onClick={handleQuickPayBacCard}
+                    onClick={() => {
+                      setCalcInitialType('transfer');
+                      setIsCalcOpen(true);
+                    }}
                     className="w-full py-2.5 px-4 rounded-xl bg-[#353534] hover:bg-[#393939] text-white text-xs font-semibold transition-colors flex items-center justify-center gap-2"
                   >
-                    <Banknote className="w-4 h-4 text-[#75FF9E]" />
-                    <span>Abonar GTQ 500.00 a tarjeta BAC</span>
+                    <ArrowLeftRight className="w-4 h-4 text-[#75FF9E]" />
+                    <span>Realizar transferencia entre cuentas</span>
                   </button>
                 </div>
 
@@ -2278,12 +2917,10 @@ export default function App() {
                   </div>
                   <div>
                     <div className="text-xs font-bold text-white">
-                      Consejo de liquidez
+                      Consejo financiero
                     </div>
                     <p className="text-xs text-[#BACBB9] mt-1 leading-relaxed">
-                      Tu nómina de 8,500 GTQ ingresó exitosamente. Puedes
-                      liquidar el saldo del BAC para evitar 240 GTQ en recargos
-                      de intereses este ciclo.
+                      Lleva el control de tus ingresos, gastos y transferencias quincenales para alcanzar tus metas de ahorro y presupuestos.
                     </p>
                   </div>
                 </div>
@@ -3072,12 +3709,22 @@ export default function App() {
                           <div className="text-sm font-semibold text-white truncate">
                             {tx.note}
                           </div>
-                          <div className="text-xs text-[#BACBB9]">
-                            {tx.accountName} · {tx.categoryName} ·{' '}
-                            {new Date(tx.dateIso).toLocaleString('es-GT', {
-                              dateStyle: 'medium',
-                              timeStyle: 'short',
-                            })}
+                          <div className="text-xs text-[#BACBB9] flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <span>{tx.accountName}</span>
+                            <span>·</span>
+                            <span>{tx.categoryName}</span>
+                            {tx.subcategory && (
+                              <span className="px-1.5 py-0.5 rounded bg-[#00DCF5]/10 text-[10px] text-[#00DCF5] font-semibold border border-[#00DCF5]/20">
+                                {tx.subcategory}
+                              </span>
+                            )}
+                            <span>·</span>
+                            <span>
+                              {new Date(tx.dateIso).toLocaleString('es-GT', {
+                                dateStyle: 'medium',
+                                timeStyle: 'short',
+                              })}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -3126,10 +3773,11 @@ export default function App() {
         {/* ==================== VIEW 4: CUENTAS ==================== */}
         {activeTab === 'cuentas' && (
           <div className="space-y-6">
-            <div className="bg-[#1C1B1B] border border-white/5 rounded-2xl p-6 flex items-center justify-between">
+            <div className="bg-[#1C1B1B] border border-white/5 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h1 className="text-2xl font-bold text-white">
-                  Mis Cuentas en Wallet
+                <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                  <CreditCard className="w-6 h-6 text-[#00DCF5]" />
+                  <span>Mis Cuentas en Wallet</span>
                 </h1>
                 <p className="text-xs text-[#BACBB9] mt-1">
                   Administra tus cuentas bancarias, billeteras de efectivo y tarjetas.
@@ -3138,7 +3786,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setIsAddAccountOpen(true)}
-                className="px-4 py-2.5 rounded-xl bg-[#00E676] text-[#003918] font-bold text-xs flex items-center gap-1.5"
+                className="px-4 py-2.5 rounded-xl bg-[#00E676] hover:bg-[#62FF96] text-[#003918] font-bold text-xs flex items-center gap-1.5 transition-colors whitespace-nowrap"
               >
                 <Plus className="w-4 h-4" />
                 <span>+ Agregar Cuenta</span>
@@ -3149,7 +3797,7 @@ export default function App() {
               {accounts.map((acc) => (
                 <div
                   key={acc.id}
-                  className="bg-[#1C1B1B] border border-white/5 rounded-2xl p-6 flex flex-col justify-between space-y-4"
+                  className="bg-[#1C1B1B] border border-white/5 rounded-2xl p-6 flex flex-col justify-between space-y-4 hover:border-white/15 transition-colors"
                 >
                   <div className="flex items-start justify-between">
                     <div>
@@ -3163,7 +3811,24 @@ export default function App() {
                         {acc.subtitle}
                       </p>
                     </div>
-                    <Wallet className="w-6 h-6 text-[#00DCF5]" />
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditAccount(acc)}
+                        className="p-1.5 rounded-lg hover:bg-[#00DCF5]/20 text-[#BACBB9] hover:text-[#00DCF5] transition-colors"
+                        title="Editar cuenta"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAccount(acc)}
+                        className="p-1.5 rounded-lg hover:bg-[#A00118]/40 text-[#BACBB9] hover:text-[#FFB3AE] transition-colors"
+                        title="Eliminar cuenta"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                   <div
                     className={`text-2xl font-bold font-mono tabular-nums ${
@@ -3182,67 +3847,268 @@ export default function App() {
           </div>
         )}
 
+        {/* ==================== VIEW: CATEGORÍAS Y SUBCATEGORÍAS ==================== */}
+        {activeTab === 'categorias' && (
+          <div className="space-y-6">
+            <div className="bg-[#1C1B1B] border border-white/5 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                  <Layers className="w-6 h-6 text-[#00E676]" />
+                  <span>Categorías y Subcategorías</span>
+                </h1>
+                <p className="text-xs text-[#BACBB9] mt-1">
+                  Gestiona tus rubros de gasto e ingreso y las subcategorías que se despliegan al registrar transacciones.
+                </p>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <div className="flex items-center bg-[#252525] p-1 rounded-xl">
+                  {(['all', 'expense', 'income'] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setCatFilterTab(tab)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        catFilterTab === tab ? 'bg-[#353534] text-white shadow-sm' : 'text-[#BACBB9] hover:text-white'
+                      }`}
+                    >
+                      {tab === 'all' ? 'Todas' : tab === 'expense' ? 'Gastos' : 'Ingresos'}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRestoreDefaultCategories}
+                  className="px-3 py-2 rounded-xl bg-[#252525] hover:bg-[#303030] text-xs font-semibold text-[#BACBB9] hover:text-white border border-white/5 transition-colors whitespace-nowrap"
+                  title="Restablece las categorías y subcategorías genéricas estándar (tanto de ingresos como de gastos)"
+                >
+                  Restablecer Estándar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenAddCategory}
+                  className="px-4 py-2.5 rounded-xl bg-[#00E676] hover:bg-[#62FF96] text-[#003918] font-bold text-xs flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Nueva Categoría</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {categories
+                .filter((c) => catFilterTab === 'all' || c.type === catFilterTab)
+                .map((cat) => (
+                  <div
+                    key={cat.id}
+                    className="bg-[#1C1B1B] border border-white/5 rounded-2xl p-5 flex flex-col justify-between space-y-4 hover:border-white/15 transition-colors"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: `${cat.colorHex}25`, color: cat.colorHex }}
+                          >
+                            {renderCategoryIcon(cat.iconName)}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-base font-bold text-white">{cat.name}</h3>
+                              <span
+                                className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                                  cat.type === 'income' ? 'bg-[#00E676]/20 text-[#75FF9E]' : 'bg-[#FF5252]/20 text-[#FFB3AE]'
+                                }`}
+                              >
+                                {cat.type === 'income' ? 'Ingreso' : 'Gasto'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-[#A0A0A0] mt-0.5">{cat.subtitle}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditCategory(cat)}
+                            className="p-1.5 rounded-lg hover:bg-[#00DCF5]/20 text-[#BACBB9] hover:text-[#00DCF5] transition-colors"
+                            title="Editar categoría y subcategorías"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(cat)}
+                            className="p-1.5 rounded-lg hover:bg-[#A00118]/40 text-[#BACBB9] hover:text-[#FFB3AE] transition-colors"
+                            title="Eliminar categoría"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Subcategories Chip List */}
+                      <div className="mt-4 pt-3 border-t border-white/5">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[11px] font-semibold text-[#BACBB9] uppercase tracking-wider flex items-center gap-1">
+                            <Tag className="w-3 h-3 text-[#00DCF5]" /> Subcategorías ({(cat.subcategories || []).length})
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(cat.subcategories || []).map((sub) => (
+                            <span
+                              key={sub}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#2A2A2A] text-xs text-[#E5E2E1] border border-white/5"
+                            >
+                              <span>{sub}</span>
+                            </span>
+                          ))}
+                          {(cat.subcategories || []).length === 0 && (
+                            <span className="text-xs text-[#707070] italic">Sin subcategorías específicas (Usa General)</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Add Subcategory Input */}
+                    <div className="pt-2">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          placeholder="+ Añadir subcategoría..."
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const val = (e.target as HTMLInputElement).value;
+                              if (val.trim()) {
+                                handleQuickAddSubcategoryToCategory(cat, val);
+                                (e.target as HTMLInputElement).value = '';
+                              }
+                            }
+                          }}
+                          className="flex-1 bg-[#141414] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-[#707070] focus:outline-none focus:border-[#00E676]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+
         {/* ==================== VIEW 5: PRESUPUESTOS ==================== */}
         {activeTab === 'presupuestos' && (
           <div className="space-y-6">
-            <div className="bg-[#1C1B1B] border border-white/5 rounded-2xl p-6 flex items-center justify-between">
+            <div className="bg-[#1C1B1B] border border-white/5 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-bold text-white">
                   Presupuestos Mensuales y Topes de Gasto
                 </h1>
                 <p className="text-xs text-[#BACBB9] mt-1">
-                  Controla tus límites de gasto mensual por categoría.
+                  Controla tus límites de gasto mensual por categoría y período financiero.
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setIsAddBudgetOpen(true)}
-                className="px-4 py-2.5 rounded-xl bg-[#00E676] text-[#003918] font-bold text-xs flex items-center gap-1.5"
+                onClick={() => {
+                  setNewBudgetPeriod(activeFirestorePeriodId);
+                  setIsAddBudgetOpen(true);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-[#00E676] hover:bg-[#62FF96] text-[#003918] font-bold text-xs flex items-center gap-1.5 transition-colors whitespace-nowrap"
               >
                 <Plus className="w-4 h-4" />
                 <span>+ Nuevo Presupuesto</span>
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              {budgets.map((b) => {
-                const pct = Math.min(
-                  100,
-                  Math.round((b.spentAmount / b.limitAmount) * 100)
-                );
-                return (
-                  <div
-                    key={b.id}
-                    className="bg-[#1C1B1B] border border-white/5 rounded-2xl p-6 space-y-4"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-base font-bold text-white">
-                        {b.name}
-                      </span>
-                      <span className="font-mono text-xs font-bold text-[#75FF9E]">
-                        {pct}%
-                      </span>
+            {budgets.length === 0 ? (
+              <div className="bg-[#1C1B1B] border border-white/5 rounded-2xl p-12 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-[#00E676]/10 text-[#00E676] flex items-center justify-center mx-auto mb-4">
+                  <Wallet className="w-7 h-7" />
+                </div>
+                <h3 className="text-lg font-bold text-white">No tienes presupuestos creados aún</h3>
+                <p className="text-xs text-[#BACBB9] max-w-md mx-auto mt-1 mb-5">
+                  Establece un límite de gasto mensual para rubros como Supermercado, Gasolina o Servicios para mantener tus finanzas bajo control.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewBudgetPeriod(activeFirestorePeriodId);
+                    setIsAddBudgetOpen(true);
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-[#00E676] text-[#003918] font-bold text-xs inline-flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Crear mi primer presupuesto</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                {budgets.map((b) => {
+                  const matchingCategory = categories.find((c) => c.id === b.categoryId);
+                  const dynamicSpent = transactions
+                    .filter((t) => t.categoryId === b.categoryId && t.type === 'expense' && (t.periodId === b.period || t.yearMonth === b.period))
+                    .reduce((acc, t) => acc + t.amount, 0);
+                  const displaySpent = dynamicSpent > 0 ? dynamicSpent : b.spentAmount;
+                  const pct = Math.min(100, Math.round((displaySpent / b.limitAmount) * 100));
+
+                  return (
+                    <div
+                      key={b.id}
+                      className="bg-[#1C1B1B] border border-white/5 rounded-2xl p-6 space-y-4 hover:border-white/15 transition-colors"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-base font-bold text-white">{b.name}</span>
+                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#00DCF5]/10 text-[#00DCF5] border border-[#00DCF5]/20">
+                              {b.period || activeFirestorePeriodId}
+                            </span>
+                          </div>
+                          <span className="text-xs text-[#BACBB9] mt-0.5 block">
+                            {matchingCategory?.name || 'Categoría vinculada'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditBudget(b)}
+                            className="p-1.5 rounded-lg hover:bg-[#00DCF5]/20 text-[#BACBB9] hover:text-[#00DCF5] transition-colors"
+                            title="Editar presupuesto"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteBudget(b)}
+                            className="p-1.5 rounded-lg hover:bg-[#A00118]/40 text-[#BACBB9] hover:text-[#FFB3AE] transition-colors"
+                            title="Eliminar presupuesto"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between items-baseline text-xs font-mono text-[#BACBB9]">
+                        <span>Gastado: GTQ {displaySpent.toFixed(2)}</span>
+                        <span className={`font-bold ${pct >= 90 ? 'text-[#FFB3AE]' : 'text-[#75FF9E]'}`}>
+                          Límite: GTQ {b.limitAmount.toFixed(2)} ({pct}%)
+                        </span>
+                      </div>
+                      <div className="w-full h-2.5 rounded-full bg-[#353534] overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            pct >= 90
+                              ? 'bg-[#FFB3AE]'
+                              : pct >= 70
+                              ? 'bg-[#00DCF5]'
+                              : 'bg-[#75FF9E]'
+                          }`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="flex justify-between text-xs font-mono text-[#BACBB9]">
-                      <span>Gastado: GTQ {b.spentAmount.toFixed(2)}</span>
-                      <span>Límite: GTQ {b.limitAmount.toFixed(2)}</span>
-                    </div>
-                    <div className="w-full h-2.5 rounded-full bg-[#353534] overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${
-                          pct >= 90
-                            ? 'bg-[#FFB3AE]'
-                            : pct >= 70
-                            ? 'bg-[#00DCF5]'
-                            : 'bg-[#75FF9E]'
-                        }`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -3538,13 +4404,26 @@ export default function App() {
                 </label>
                 <input
                   type="number"
-                  step="10"
-                  min="1"
+                  step="any"
+                  min="0.01"
                   value={newBudgetLimit}
                   onChange={(e) => setNewBudgetLimit(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#252525] text-sm font-mono text-white border border-white/10"
+                  placeholder="Ej. 1000.00"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#252525] text-sm font-mono text-white border border-white/10 focus:border-[#00E676] focus:outline-none"
                 />
               </div>
+            </div>
+            <div>
+              <label className="block text-xs text-[#BACBB9] mb-1">
+                Período Financiero Asociado
+              </label>
+              <input
+                type="text"
+                value={newBudgetPeriod || activeFirestorePeriodId}
+                onChange={(e) => setNewBudgetPeriod(e.target.value)}
+                placeholder="period_2026_11"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#252525] text-sm font-mono text-[#75FF9E] border border-white/10"
+              />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button
@@ -3559,6 +4438,463 @@ export default function App() {
                 className="px-5 py-2 rounded-xl bg-[#00E676] text-[#003918] text-xs font-bold"
               >
                 Crear Presupuesto
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Modal: Edit Account Modal */}
+      {isEditAccountOpen && editingAccount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <form
+            onSubmit={handleUpdateAccount}
+            className="w-full max-w-md bg-[#1E1E1E] border border-white/10 rounded-2xl p-6 space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">Editar Cuenta</h3>
+              <button
+                type="button"
+                onClick={() => setIsEditAccountOpen(false)}
+                className="p-1 text-[#A0A0A0] hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div>
+              <label className="block text-xs text-[#BACBB9] mb-1">Nombre de la cuenta</label>
+              <input
+                type="text"
+                required
+                maxLength={80}
+                value={editAccName}
+                onChange={(e) => setEditAccName(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#252525] text-sm text-white border border-white/10"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-[#BACBB9] mb-1">Tipo de cuenta</label>
+                <select
+                  value={editAccType}
+                  onChange={(e) => setEditAccType(e.target.value as AccountType)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-[#252525] text-sm text-white border border-white/10"
+                >
+                  <option value="cash">Efectivo</option>
+                  <option value="bank">Cuenta Bancaria</option>
+                  <option value="credit_card">Tarjeta de Crédito</option>
+                  <option value="savings">Ahorros</option>
+                  <option value="investment">Inversión</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-[#BACBB9] mb-1">Saldo Actual (GTQ)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editAccBalance}
+                  onChange={(e) => setEditAccBalance(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#252525] text-sm font-mono text-white border border-white/10"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-[#BACBB9] mb-1">Descripción / Subtítulo</label>
+              <input
+                type="text"
+                maxLength={100}
+                value={editAccSubtitle}
+                onChange={(e) => setEditAccSubtitle(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#252525] text-sm text-white border border-white/10"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsEditAccountOpen(false)}
+                className="px-4 py-2 rounded-xl bg-[#252525] text-xs font-semibold text-[#BACBB9]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-xl bg-[#00E676] text-[#003918] text-xs font-bold"
+              >
+                Guardar Cambios
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Modal: Add Category Modal */}
+      {isAddCategoryOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <form
+            onSubmit={handleCreateCategory}
+            className="w-full max-w-md bg-[#1E1E1E] border border-white/10 rounded-2xl p-6 space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <FolderPlus className="w-5 h-5 text-[#00E676]" />
+                <span>Nueva Categoría</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsAddCategoryOpen(false)}
+                className="p-1 text-[#A0A0A0] hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div>
+              <label className="block text-xs text-[#BACBB9] mb-1">Nombre de la categoría</label>
+              <input
+                type="text"
+                required
+                maxLength={60}
+                value={catFormName}
+                onChange={(e) => setCatFormName(e.target.value)}
+                placeholder="Ej. Mascotas & Veterinaria"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#252525] text-sm text-white border border-white/10"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-[#BACBB9] mb-1">Tipo de flujo</label>
+                <select
+                  value={catFormType}
+                  onChange={(e) => setCatFormType(e.target.value as 'expense' | 'income')}
+                  className="w-full px-3 py-2.5 rounded-xl bg-[#252525] text-sm text-white border border-white/10"
+                >
+                  <option value="expense">Gasto</option>
+                  <option value="income">Ingreso</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-[#BACBB9] mb-1">Icono</label>
+                <select
+                  value={catFormIcon}
+                  onChange={(e) => setCatFormIcon(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-[#252525] text-sm text-white border border-white/10"
+                >
+                  <option value="utensils">Comida / Utensilios</option>
+                  <option value="shopping_cart">Supermercado</option>
+                  <option value="fuel">Gasolina / Auto</option>
+                  <option value="wifi">Servicios / Red</option>
+                  <option value="film">Entretenimiento</option>
+                  <option value="heart_pulse">Salud</option>
+                  <option value="briefcase">Trabajo / Nómina</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-[#BACBB9] mb-1">Color representativo</label>
+              <div className="flex items-center gap-2">
+                {['#00E676', '#00DCF5', '#FF5252', '#FFB300', '#9C27B0', '#75FF9E'].map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCatFormColor(c)}
+                    className={`w-7 h-7 rounded-full transition-transform ${catFormColor === c ? 'scale-125 ring-2 ring-white' : 'opacity-80'}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-[#BACBB9] mb-1">Descripción / Subtítulo</label>
+              <input
+                type="text"
+                maxLength={120}
+                value={catFormSubtitle}
+                onChange={(e) => setCatFormSubtitle(e.target.value)}
+                placeholder="Alimento, medicinas, visitas veterinarias"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#252525] text-sm text-white border border-white/10"
+              />
+            </div>
+
+            {/* Subcategorías Editor */}
+            <div className="pt-2 border-t border-white/5">
+              <label className="block text-xs text-[#BACBB9] mb-1.5 flex items-center justify-between">
+                <span>Subcategorías desplegables ({catFormSubcategories.length})</span>
+                <span className="text-[11px] text-[#A0A0A0]">Enter para agregar</span>
+              </label>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={catFormNewSubInput}
+                  onChange={(e) => setCatFormNewSubInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddSubcategoryTag();
+                    }
+                  }}
+                  placeholder="Ej. Alimento, Vacunas..."
+                  className="flex-1 px-3 py-1.5 rounded-lg bg-[#252525] text-xs text-white border border-white/10"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddSubcategoryTag}
+                  className="px-3 py-1.5 rounded-lg bg-[#333] hover:bg-[#444] text-xs text-white font-semibold"
+                >
+                  Añadir
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                {catFormSubcategories.map((sub) => (
+                  <span
+                    key={sub}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#2A2A2A] text-xs text-white border border-white/10"
+                  >
+                    <span>{sub}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSubcategoryTag(sub)}
+                      className="hover:text-[#FF5252]"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsAddCategoryOpen(false)}
+                className="px-4 py-2 rounded-xl bg-[#252525] text-xs font-semibold text-[#BACBB9]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-xl bg-[#00E676] text-[#003918] text-xs font-bold"
+              >
+                Crear Categoría
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Modal: Edit Category Modal */}
+      {isEditCategoryOpen && editingCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <form
+            onSubmit={handleUpdateCategory}
+            className="w-full max-w-md bg-[#1E1E1E] border border-white/10 rounded-2xl p-6 space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-[#00DCF5]" />
+                <span>Editar Categoría y Subcategorías</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsEditCategoryOpen(false)}
+                className="p-1 text-[#A0A0A0] hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div>
+              <label className="block text-xs text-[#BACBB9] mb-1">Nombre</label>
+              <input
+                type="text"
+                required
+                maxLength={60}
+                value={catFormName}
+                onChange={(e) => setCatFormName(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#252525] text-sm text-white border border-white/10"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-[#BACBB9] mb-1">Tipo de flujo</label>
+                <select
+                  value={catFormType}
+                  onChange={(e) => setCatFormType(e.target.value as 'expense' | 'income')}
+                  className="w-full px-3 py-2.5 rounded-xl bg-[#252525] text-sm text-white border border-white/10"
+                >
+                  <option value="expense">Gasto</option>
+                  <option value="income">Ingreso</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-[#BACBB9] mb-1">Icono</label>
+                <select
+                  value={catFormIcon}
+                  onChange={(e) => setCatFormIcon(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-[#252525] text-sm text-white border border-white/10"
+                >
+                  <option value="utensils">Comida / Utensilios</option>
+                  <option value="shopping_cart">Supermercado</option>
+                  <option value="fuel">Gasolina / Auto</option>
+                  <option value="wifi">Servicios / Red</option>
+                  <option value="film">Entretenimiento</option>
+                  <option value="heart_pulse">Salud</option>
+                  <option value="briefcase">Trabajo / Nómina</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-[#BACBB9] mb-1">Descripción</label>
+              <input
+                type="text"
+                maxLength={120}
+                value={catFormSubtitle}
+                onChange={(e) => setCatFormSubtitle(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#252525] text-sm text-white border border-white/10"
+              />
+            </div>
+
+            {/* Subcategorías Editor */}
+            <div className="pt-2 border-t border-white/5">
+              <label className="block text-xs text-[#BACBB9] mb-1.5 flex items-center justify-between">
+                <span>Subcategorías desplegables ({catFormSubcategories.length})</span>
+                <span className="text-[11px] text-[#A0A0A0]">Enter para agregar</span>
+              </label>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={catFormNewSubInput}
+                  onChange={(e) => setCatFormNewSubInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddSubcategoryTag();
+                    }
+                  }}
+                  placeholder="Nueva subcategoría..."
+                  className="flex-1 px-3 py-1.5 rounded-lg bg-[#252525] text-xs text-white border border-white/10"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddSubcategoryTag}
+                  className="px-3 py-1.5 rounded-lg bg-[#333] hover:bg-[#444] text-xs text-white font-semibold"
+                >
+                  Añadir
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+                {catFormSubcategories.map((sub) => (
+                  <span
+                    key={sub}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#2A2A2A] text-xs text-white border border-white/10"
+                  >
+                    <span>{sub}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSubcategoryTag(sub)}
+                      className="hover:text-[#FF5252]"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsEditCategoryOpen(false)}
+                className="px-4 py-2 rounded-xl bg-[#252525] text-xs font-semibold text-[#BACBB9]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-xl bg-[#00E676] text-[#003918] text-xs font-bold"
+              >
+                Guardar Cambios
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Modal: Edit Budget Modal */}
+      {isEditBudgetOpen && editingBudget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <form
+            onSubmit={handleUpdateBudget}
+            className="w-full max-w-md bg-[#1E1E1E] border border-white/10 rounded-2xl p-6 space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">Editar Presupuesto</h3>
+              <button
+                type="button"
+                onClick={() => setIsEditBudgetOpen(false)}
+                className="p-1 text-[#A0A0A0] hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div>
+              <label className="block text-xs text-[#BACBB9] mb-1">Nombre</label>
+              <input
+                type="text"
+                required
+                maxLength={80}
+                value={editBudgetName}
+                onChange={(e) => setEditBudgetName(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#252525] text-sm text-white border border-white/10"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-[#BACBB9] mb-1">Categoría vinculada</label>
+                <select
+                  value={editBudgetCategory}
+                  onChange={(e) => setEditBudgetCategory(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-[#252525] text-sm text-white border border-white/10"
+                >
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-[#BACBB9] mb-1">Tope Mensual (GTQ)</label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0.01"
+                  value={editBudgetLimit}
+                  onChange={(e) => setEditBudgetLimit(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#252525] text-sm font-mono text-white border border-white/10 focus:border-[#00E676] focus:outline-none"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-[#BACBB9] mb-1">Período Financiero</label>
+              <input
+                type="text"
+                value={editBudgetPeriod}
+                onChange={(e) => setEditBudgetPeriod(e.target.value)}
+                placeholder="period_2026_11"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#252525] text-sm font-mono text-[#75FF9E] border border-white/10"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsEditBudgetOpen(false)}
+                className="px-4 py-2 rounded-xl bg-[#252525] text-xs font-semibold text-[#BACBB9]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-xl bg-[#00E676] text-[#003918] text-xs font-bold"
+              >
+                Guardar Presupuesto
               </button>
             </div>
           </form>

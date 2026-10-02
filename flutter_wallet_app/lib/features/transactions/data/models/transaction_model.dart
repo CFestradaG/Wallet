@@ -29,6 +29,7 @@ class TransactionEntity {
   final String categoryName;
   final String categoryIcon;
   final String categoryColor;
+  final String? subcategory;   // Subcategoría desplegable seleccionada
   final TransactionType type;
   final double amount;
   final String currency;
@@ -50,6 +51,7 @@ class TransactionEntity {
     required this.categoryName,
     required this.categoryIcon,
     required this.categoryColor,
+    this.subcategory,
     required this.type,
     required this.amount,
     required this.currency,
@@ -85,6 +87,7 @@ class TransactionModel extends TransactionEntity {
     required super.categoryName,
     required super.categoryIcon,
     required super.categoryColor,
+    super.subcategory,
     required super.type,
     required super.amount,
     required super.currency,
@@ -130,6 +133,7 @@ class TransactionModel extends TransactionEntity {
       categoryName: (data['categoryName'] as String?) ?? 'Comida y Bebida',
       categoryIcon: (data['categoryIcon'] as String?) ?? 'utensils',
       categoryColor: (data['categoryColor'] as String?) ?? '#00E676',
+      subcategory: data['subcategory'] as String?,
       type: TransactionType.fromString(data['type'] as String?),
       amount: ((data['amount'] as num?)?.toDouble() ?? 0.0).abs(),
       currency: (data['currency'] as String?) ?? 'GTQ',
@@ -165,6 +169,10 @@ class TransactionModel extends TransactionEntity {
           : categoryName,
       'categoryIcon': categoryIcon,
       'categoryColor': categoryColor,
+      if (subcategory != null && subcategory!.isNotEmpty)
+        'subcategory': subcategory!.length > 80
+            ? subcategory!.substring(0, 80)
+            : subcategory,
       'type': type.value,
       'amount': amount.abs(),
       'currency': currency,
@@ -186,6 +194,7 @@ class TransactionModel extends TransactionEntity {
     String? categoryName,
     String? categoryIcon,
     String? categoryColor,
+    String? subcategory,
     TransactionType? type,
     double? amount,
     String? currency,
@@ -205,6 +214,7 @@ class TransactionModel extends TransactionEntity {
       categoryName: categoryName ?? this.categoryName,
       categoryIcon: categoryIcon ?? this.categoryIcon,
       categoryColor: categoryColor ?? this.categoryColor,
+      subcategory: subcategory ?? this.subcategory,
       type: type ?? this.type,
       amount: amount ?? this.amount,
       currency: currency ?? this.currency,

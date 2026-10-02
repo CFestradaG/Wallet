@@ -37,7 +37,7 @@ service cloud.firestore {
     }
 
     function userExists(userId) {
-      return exists(/databases/$(database)/documents/users/$(userId));
+      return isSignedIn() && request.auth.uid == userId;
     }
 
     // 3. Entity Validation Blueprints
@@ -61,9 +61,10 @@ service cloud.firestore {
 
     function isValidAccount(data) {
       return data.keys().hasAll(['userId', 'name', 'type', 'balance', 'currency', 'colorHex', 'iconName', 'subtitle', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['userId', 'name', 'type', 'balance', 'currentBalance', 'currency', 'colorHex', 'iconName', 'subtitle', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'userId', 'name', 'type', 'balance', 'currentBalance', 'currency', 'colorHex', 'iconName', 'subtitle', 'createdAt', 'updatedAt'])
         && isValidId(data.userId)
         && data.userId == request.auth.uid
+        && (!('id' in data) || isValidId(data.id))
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
         && data.type is string && data.type.size() <= 20 && data.type in ['cash', 'bank', 'credit_card', 'savings', 'investment']
         && data.balance is number
@@ -83,13 +84,14 @@ service cloud.firestore {
           'note', 'dateIso', 'yearMonth', 'createdAt', 'updatedAt'
         ])
         && data.keys().hasOnly([
-          'userId', 'accountId', 'accountName', 'toAccountId', 'toAccountName',
+          'id', 'userId', 'accountId', 'accountName', 'toAccountId', 'toAccountName',
           'categoryId', 'categoryName', 'categoryIcon', 'categoryColor',
           'type', 'amount', 'currency', 'note', 'dateIso',
-          'yearMonth', 'periodId', 'createdAt', 'updatedAt'
+          'yearMonth', 'periodId', 'subcategory', 'createdAt', 'updatedAt'
         ])
         && isValidId(data.userId)
         && data.userId == request.auth.uid
+        && (!('id' in data) || isValidId(data.id))
         && isValidId(data.accountId)
         && data.accountName is string && data.accountName.size() >= 1 && data.accountName.size() <= 80
         && (!('toAccountId' in data) || isValidId(data.toAccountId))
@@ -101,24 +103,27 @@ service cloud.firestore {
         && data.type is string && data.type.size() <= 15 && data.type in ['income', 'expense', 'transfer']
         && data.amount is number && data.amount >= 0
         && isValidCurrency(data.currency)
-        && data.note is string && data.note.size() >= 1 && data.note.size() <= 200
+        && data.note is string && data.note.size() >= 0 && data.note.size() <= 200
         && data.dateIso is string && data.dateIso.size() >= 10 && data.dateIso.size() <= 40
         && isValidPeriodId(data.yearMonth)
         && (!('periodId' in data) || isValidPeriodId(data.periodId))
+        && (!('subcategory' in data) || (data.subcategory is string && data.subcategory.size() <= 80))
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
 
     function isValidCategory(data) {
       return data.keys().hasAll(['userId', 'name', 'subtitle', 'iconName', 'colorHex', 'type', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['userId', 'name', 'subtitle', 'iconName', 'colorHex', 'type', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'userId', 'name', 'subtitle', 'iconName', 'colorHex', 'type', 'subcategories', 'createdAt', 'updatedAt'])
         && isValidId(data.userId)
         && data.userId == request.auth.uid
+        && (!('id' in data) || isValidId(data.id))
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 60
         && data.subtitle is string && data.subtitle.size() >= 0 && data.subtitle.size() <= 120
         && data.iconName is string && data.iconName.size() >= 1 && data.iconName.size() <= 40
         && data.colorHex is string && data.colorHex.size() >= 4 && data.colorHex.size() <= 9
         && data.type is string && data.type.size() <= 15 && data.type in ['income', 'expense']
+        && (!('subcategories' in data) || data.subcategories is list)
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -129,11 +134,12 @@ service cloud.firestore {
           'currency', 'period', 'iconName', 'colorHex', 'createdAt', 'updatedAt'
         ])
         && data.keys().hasOnly([
-          'userId', 'name', 'categoryId', 'limitAmount', 'spentAmount',
+          'id', 'userId', 'name', 'categoryId', 'limitAmount', 'spentAmount',
           'currency', 'period', 'iconName', 'colorHex', 'createdAt', 'updatedAt'
         ])
         && isValidId(data.userId)
         && data.userId == request.auth.uid
+        && (!('id' in data) || isValidId(data.id))
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
         && isValidId(data.categoryId)
         && data.limitAmount is number && data.limitAmount > 0
@@ -152,11 +158,12 @@ service cloud.firestore {
           'netCashFlow', 'savingsRate', 'currency', 'createdAt', 'updatedAt'
         ])
         && data.keys().hasOnly([
-          'userId', 'yearMonth', 'periodId', 'totalIncome', 'totalExpense',
+          'id', 'userId', 'yearMonth', 'periodId', 'totalIncome', 'totalExpense',
           'netCashFlow', 'savingsRate', 'currency', 'createdAt', 'updatedAt'
         ])
         && isValidId(data.userId)
         && data.userId == request.auth.uid
+        && (!('id' in data) || isValidId(data.id))
         && isValidPeriodId(data.yearMonth)
         && (!('periodId' in data) || isValidPeriodId(data.periodId))
         && data.totalIncome is number && data.totalIncome >= 0
@@ -221,8 +228,7 @@ service cloud.firestore {
           && isValidTransaction(incoming())
           && incoming().createdAt == request.time
           && incoming().updatedAt == request.time
-          && userExists(userId)
-          && exists(/databases/$(database)/documents/users/$(userId)/accounts/$(incoming().accountId));
+          && userExists(userId);
         allow update: if isOwner(userId)
           && isValidId(userId)
           && isValidId(transactionId)
@@ -234,7 +240,7 @@ service cloud.firestore {
             'accountId', 'accountName', 'toAccountId', 'toAccountName',
             'categoryId', 'categoryName', 'categoryIcon', 'categoryColor',
             'type', 'amount', 'currency', 'note', 'dateIso',
-            'yearMonth', 'periodId', 'updatedAt'
+            'yearMonth', 'periodId', 'subcategory', 'updatedAt'
           ])
           && userExists(userId);
         allow delete: if isOwner(userId) && isValidId(userId) && isValidId(transactionId) && userExists(userId);
@@ -258,7 +264,7 @@ service cloud.firestore {
           && incoming().userId == existing().userId
           && incoming().createdAt == existing().createdAt
           && incoming().updatedAt == request.time
-          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'subtitle', 'iconName', 'colorHex', 'type', 'updatedAt'])
+          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'subtitle', 'iconName', 'colorHex', 'type', 'subcategories', 'updatedAt'])
           && userExists(userId);
         allow delete: if isOwner(userId) && isValidId(userId) && isValidId(categoryId) && userExists(userId);
       }

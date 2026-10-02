@@ -86,7 +86,7 @@ service cloud.firestore {
           'userId', 'accountId', 'accountName', 'toAccountId', 'toAccountName',
           'categoryId', 'categoryName', 'categoryIcon', 'categoryColor',
           'type', 'amount', 'currency', 'note', 'dateIso',
-          'yearMonth', 'periodId', 'createdAt', 'updatedAt'
+          'yearMonth', 'periodId', 'subcategory', 'createdAt', 'updatedAt'
         ])
         && isValidId(data.userId)
         && data.userId == request.auth.uid
@@ -105,13 +105,14 @@ service cloud.firestore {
         && data.dateIso is string && data.dateIso.size() >= 10 && data.dateIso.size() <= 40
         && isValidPeriodId(data.yearMonth)
         && (!('periodId' in data) || isValidPeriodId(data.periodId))
+        && (!('subcategory' in data) || (data.subcategory is string && data.subcategory.size() <= 80))
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
 
     function isValidCategory(data) {
       return data.keys().hasAll(['userId', 'name', 'subtitle', 'iconName', 'colorHex', 'type', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['userId', 'name', 'subtitle', 'iconName', 'colorHex', 'type', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'name', 'subtitle', 'iconName', 'colorHex', 'type', 'subcategories', 'createdAt', 'updatedAt'])
         && isValidId(data.userId)
         && data.userId == request.auth.uid
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 60
@@ -119,6 +120,7 @@ service cloud.firestore {
         && data.iconName is string && data.iconName.size() >= 1 && data.iconName.size() <= 40
         && data.colorHex is string && data.colorHex.size() >= 4 && data.colorHex.size() <= 9
         && data.type is string && data.type.size() <= 15 && data.type in ['income', 'expense']
+        && (!('subcategories' in data) || data.subcategories is list)
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -234,7 +236,7 @@ service cloud.firestore {
             'accountId', 'accountName', 'toAccountId', 'toAccountName',
             'categoryId', 'categoryName', 'categoryIcon', 'categoryColor',
             'type', 'amount', 'currency', 'note', 'dateIso',
-            'yearMonth', 'periodId', 'updatedAt'
+            'yearMonth', 'periodId', 'subcategory', 'updatedAt'
           ])
           && userExists(userId);
         allow delete: if isOwner(userId) && isValidId(userId) && isValidId(transactionId) && userExists(userId);
@@ -258,7 +260,7 @@ service cloud.firestore {
           && incoming().userId == existing().userId
           && incoming().createdAt == existing().createdAt
           && incoming().updatedAt == request.time
-          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'subtitle', 'iconName', 'colorHex', 'type', 'updatedAt'])
+          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'subtitle', 'iconName', 'colorHex', 'type', 'subcategories', 'updatedAt'])
           && userExists(userId);
         allow delete: if isOwner(userId) && isValidId(userId) && isValidId(categoryId) && userExists(userId);
       }
