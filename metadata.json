@@ -1,6 +1,6 @@
 {
-  "name": "Wallet by BudgetBakers - Clean Architecture & Firestore",
-  "description": "Plataforma de finanzas personales (clon de Wallet by BudgetBakers) con diseño Obsidian Flow Material 3, conectada a Cloud Firestore y Firebase Auth, incluyendo arquitectura Clean Architecture + Riverpod para Flutter.",
+  "name": "Wallet — Finanzas Personales",
+  "description": "Plataforma de finanzas personales para gestión de cuentas, transacciones y presupuestos en tiempo real.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

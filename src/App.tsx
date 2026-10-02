@@ -10,6 +10,7 @@ import {
   doc,
   setDoc,
   getDoc,
+  getDocs,
   onSnapshot,
   query,
   where,
@@ -86,17 +87,14 @@ import {
   DateRangeValue,
 } from './utils/financialPeriodHelper';
 import { NewTransactionModal } from './components/NewTransactionModal';
-import { FlutterArchitectureExplorer } from './components/FlutterArchitectureExplorer';
-import { MobilePreviewView } from './components/MobilePreviewView';
 
 type NavTab =
   | 'panel'
-  | 'analitica'
-  | 'registros'
   | 'cuentas'
-  | 'presupuestos'
-  | 'movil'
-  | 'flutter_arch';
+  | 'registros'
+  | 'analitica'
+  | 'presupuestos';
+
 
 const DAILY_BARS_OCT = [
   { day: '01 Oct', inc: 195, exp: 45 },
@@ -214,23 +212,54 @@ export default function App() {
       setCurrentUser(user);
       setAuthReady(true);
       if (user) {
+        // Al iniciar sesión, el usuario real empieza completamente en CERO
+        setTransactions([]);
+        setBudgets([]);
+        setSummary({
+          id: 'period_current',
+          userId: user.uid,
+          yearMonth: 'period_current',
+          periodId: 'period_current',
+          totalIncome: 0,
+          totalExpense: 0,
+          netCashFlow: 0,
+          savingsRate: 0,
+          currency: 'GTQ',
+        });
         await ensureUserSeededInFirestore(user);
+      } else {
+        // En modo demostración (sin sesión), mostrar datos de muestra
+        setAccounts(INITIAL_ACCOUNTS_SEED.map((a) => ({ ...a, userId: 'demo' })));
+        setCategories(INITIAL_CATEGORIES_SEED.map((c) => ({ ...c, userId: 'demo' })));
+        setBudgets(INITIAL_BUDGETS_SEED.map((b) => ({ ...b, userId: 'demo' })));
+        setTransactions(INITIAL_TRANSACTIONS_SEED.map((t) => ({ ...t, userId: 'demo' })));
+        setSummary({
+          id: 'period_2026_11',
+          userId: 'demo',
+          yearMonth: 'period_2026_11',
+          periodId: 'period_2026_11',
+          totalIncome: 12500.0,
+          totalExpense: 6430.0,
+          netCashFlow: 6070.0,
+          savingsRate: 48.5,
+          currency: 'GTQ',
+        });
       }
     });
     return () => unsub();
   }, []);
 
-  // 2. Seed initial Stitch data into Firestore subcollections on first sign-in
+  // 2. Inicializar cuentas y categorías en Firestore para el nuevo usuario
   const ensureUserSeededInFirestore = async (user: User) => {
     const uid = user.uid;
     const userDocRef = doc(db, 'users', uid);
     try {
       const snap = await getDoc(userDocRef);
       if (!snap.exists()) {
-        // First create Master Gate /users/{userId} with UserSettingsModel fields
+        // Crear documento del usuario
         await setDoc(userDocRef, {
           userId: uid,
-          displayName: (user.displayName || 'Francisco Estrada').slice(0, 100),
+          displayName: (user.displayName || 'Mi Usuario').slice(0, 100),
           defaultCurrency: 'GTQ',
           startDayOfMonth: 27,
           enableSplitPeriod: true,
@@ -239,17 +268,44 @@ export default function App() {
           updatedAt: serverTimestamp(),
         });
 
-        // Next seed accounts, categories, budgets, and summary
+        // Crear cuentas iniciales con SALDO EN CERO (Q0.00)
         const batch1 = writeBatch(db);
-        for (const acc of INITIAL_ACCOUNTS_SEED) {
+        const STARTER_ACCOUNTS: Omit<WalletAccount, 'createdAt' | 'updatedAt'>[] = [
+          {
+            id: 'acc_efectivo',
+            name: 'Efectivo',
+            type: 'cash',
+            balance: 0.0,
+            currentBalance: 0.0,
+            currency: 'GTQ',
+            colorHex: '#00DCF5',
+            iconName: 'payments',
+            subtitle: 'Billetera / Efectivo disponible',
+            userId: uid,
+          },
+          {
+            id: 'acc_banco',
+            name: 'Cuenta Bancaria',
+            type: 'bank',
+            balance: 0.0,
+            currentBalance: 0.0,
+            currency: 'GTQ',
+            colorHex: '#00E676',
+            iconName: 'account_balance',
+            subtitle: 'Cuenta monetaria o ahorros',
+            userId: uid,
+          },
+        ];
+
+        for (const acc of STARTER_ACCOUNTS) {
           batch1.set(doc(db, 'users', uid, 'accounts', acc.id), {
             ...acc,
-            currentBalance: acc.balance,
-            userId: uid,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
         }
+
+        // Sembrar categorías estándar para que el usuario pueda registrar gastos
         for (const cat of INITIAL_CATEGORIES_SEED) {
           batch1.set(doc(db, 'users', uid, 'categories', cat.id), {
             ...cat,
@@ -258,47 +314,54 @@ export default function App() {
             updatedAt: serverTimestamp(),
           });
         }
-        for (const bud of INITIAL_BUDGETS_SEED) {
-          batch1.set(doc(db, 'users', uid, 'budgets', bud.id), {
-            ...bud,
-            userId: uid,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        }
+
+        // Resumen inicial en cero
         batch1.set(doc(db, 'users', uid, 'summaries', 'period_2026_11'), {
           userId: uid,
           yearMonth: 'period_2026_11',
           periodId: 'period_2026_11',
-          totalIncome: 12500.0,
-          totalExpense: 6430.0,
-          netCashFlow: 6070.0,
-          savingsRate: 48.5,
+          totalIncome: 0.0,
+          totalExpense: 0.0,
+          netCashFlow: 0.0,
+          savingsRate: 0.0,
           currency: 'GTQ',
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
-        await batch1.commit();
 
-        // Seed transactions after accounts exist (since security rules check exists(account))
-        const batch2 = writeBatch(db);
-        for (const tx of INITIAL_TRANSACTIONS_SEED) {
-          batch2.set(doc(db, 'users', uid, 'transactions', tx.id), {
-            ...tx,
-            userId: uid,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
+        await batch1.commit();
+        showToast('¡Bienvenido! Cuentas listas con saldo en Q0.00');
+      } else {
+        // Si el usuario ya existía pero tiene transacciones de prueba legadas (tx_seed_*), limpiarlas
+        const txSnap = await getDocs(
+          query(collection(db, 'users', uid, 'transactions'), where('userId', '==', uid))
+        );
+        const legacySeeds = txSnap.docs.filter((d) => d.id.startsWith('tx_'));
+        if (legacySeeds.length > 0) {
+          const cleanBatch = writeBatch(db);
+          for (const d of legacySeeds) {
+            cleanBatch.delete(d.ref);
+          }
+          const accSnap = await getDocs(
+            query(collection(db, 'users', uid, 'accounts'), where('userId', '==', uid))
+          );
+          for (const aDoc of accSnap.docs) {
+            cleanBatch.update(aDoc.ref, {
+              balance: 0.0,
+              currentBalance: 0.0,
+              updatedAt: serverTimestamp(),
+            });
+          }
+          await cleanBatch.commit();
+          showToast('Datos de prueba limpiados. Cuentas restablecidas a cero.');
         }
-        await batch2.commit();
-        showToast('Subcolecciones sincronizadas en Cloud Firestore');
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `users/${uid}`);
     }
   };
 
-  // 3. Real-time Firestore Listeners for the 5 Subcollections
+  // 3. Real-time Firestore Listeners for Subcollections
   useEffect(() => {
     if (!authReady || !currentUser) return;
     const uid = currentUser.uid;
@@ -310,13 +373,11 @@ export default function App() {
     const unsubAcc = onSnapshot(
       accountsQ,
       (snap) => {
-        if (!snap.empty) {
-          setAccounts(
-            snap.docs.map(
-              (d) => ({ id: d.id, ...d.data() } as WalletAccount)
-            )
-          );
-        }
+        setAccounts(
+          snap.docs.map(
+            (d) => ({ id: d.id, ...d.data() } as WalletAccount)
+          )
+        );
       },
       (err) =>
         handleFirestoreError(
@@ -333,13 +394,11 @@ export default function App() {
     const unsubCat = onSnapshot(
       categoriesQ,
       (snap) => {
-        if (!snap.empty) {
-          setCategories(
-            snap.docs.map(
-              (d) => ({ id: d.id, ...d.data() } as WalletCategory)
-            )
-          );
-        }
+        setCategories(
+          snap.docs.map(
+            (d) => ({ id: d.id, ...d.data() } as WalletCategory)
+          )
+        );
       },
       (err) =>
         handleFirestoreError(
@@ -356,11 +415,9 @@ export default function App() {
     const unsubBud = onSnapshot(
       budgetsQ,
       (snap) => {
-        if (!snap.empty) {
-          setBudgets(
-            snap.docs.map((d) => ({ id: d.id, ...d.data() } as WalletBudget))
-          );
-        }
+        setBudgets(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() } as WalletBudget))
+        );
       },
       (err) =>
         handleFirestoreError(
@@ -377,16 +434,14 @@ export default function App() {
     const unsubTx = onSnapshot(
       txQ,
       (snap) => {
-        if (!snap.empty) {
-          const list = snap.docs.map(
-            (d) => ({ id: d.id, ...d.data() } as WalletTransaction)
-          );
-          list.sort(
-            (a, b) =>
-              new Date(b.dateIso).getTime() - new Date(a.dateIso).getTime()
-          );
-          setTransactions(list);
-        }
+        const list = snap.docs.map(
+          (d) => ({ id: d.id, ...d.data() } as WalletTransaction)
+        );
+        list.sort(
+          (a, b) =>
+            new Date(b.dateIso).getTime() - new Date(a.dateIso).getTime()
+        );
+        setTransactions(list);
       },
       (err) =>
         handleFirestoreError(
@@ -433,6 +488,18 @@ export default function App() {
           setSummary({
             id: snap.id,
             ...(snap.data() as Omit<MonthlySummary, 'id'>),
+          });
+        } else {
+          setSummary({
+            id: activePeriodDocId,
+            userId: uid,
+            yearMonth: activePeriodDocId,
+            periodId: activePeriodDocId,
+            totalIncome: 0,
+            totalExpense: 0,
+            netCashFlow: 0,
+            savingsRate: 0,
+            currency: 'GTQ',
           });
         }
       },
@@ -1209,10 +1276,8 @@ export default function App() {
             { id: 'panel', label: 'Panel' },
             { id: 'cuentas', label: 'Cuentas' },
             { id: 'registros', label: 'Registros' },
-            { id: 'analitica', label: 'Analítica / Reportes' },
+            { id: 'analitica', label: 'Analítica' },
             { id: 'presupuestos', label: 'Presupuestos' },
-            { id: 'movil', label: 'Vista Móvil' },
-            { id: 'flutter_arch', label: 'Arquitectura Flutter' },
           ].map((item) => {
             const active = activeTab === item.id;
             return (
@@ -1265,10 +1330,10 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsLoginModalOpen(true)}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#201F1F] hover:bg-[#2A2A2A] border border-white/10 text-xs font-semibold text-white transition-colors whitespace-nowrap"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#201F1F] hover:bg-[#2A2A2A] border border-white/10 text-xs font-semibold text-white transition-colors whitespace-nowrap"
             >
               <LogIn className="w-4 h-4 text-[#00E676]" />
-              <span className="hidden sm:inline">Conectar Firebase</span>
+              <span>Iniciar Sesión</span>
             </button>
           )}
         </div>
@@ -1278,12 +1343,10 @@ export default function App() {
       <div className="flex lg:hidden items-center gap-1.5 overflow-x-auto px-4 py-2.5 bg-[#181818] border-b border-white/5">
         {[
           { id: 'panel', label: 'Panel' },
-          { id: 'analitica', label: 'Analítica' },
-          { id: 'registros', label: 'Registros' },
           { id: 'cuentas', label: 'Cuentas' },
+          { id: 'registros', label: 'Registros' },
+          { id: 'analitica', label: 'Analítica' },
           { id: 'presupuestos', label: 'Presupuestos' },
-          { id: 'movil', label: 'Simulador Móvil' },
-          { id: 'flutter_arch', label: 'Código Flutter' },
         ].map((item) => (
           <button
             key={item.id}
@@ -1310,40 +1373,30 @@ export default function App() {
 
       {/* Main Content Container */}
       <main className="flex-1 w-full max-w-[1480px] mx-auto px-4 lg:px-8 py-6">
-        {/*Quick Bar showing Flutter Architecture / Mobile Preview shortcut*/}
-        {activeTab !== 'flutter_arch' && (
-          <div className="mb-6 bg-[#1C1B1B] border border-white/5 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 text-xs text-[#BACBB9]">
-              <Code2 className="w-4 h-4 text-[#00E676] shrink-0" />
-              <span>
-                <strong className="text-white">
-                  Proyecto Flutter + Clean Architecture + Riverpod:
-                </strong>{' '}
-                Explora la estructura de carpetas (Tarea 1) y los archivos{' '}
-                <code className="text-[#75FF9E] font-mono">main.dart</code>,{' '}
-                <code className="text-[#75FF9E] font-mono">theme.dart</code> y{' '}
-                <code className="text-[#75FF9E] font-mono">app_router.dart</code>{' '}
-                (Tarea 2).
-              </span>
+        {/* Banner solo para Modo Demo (cuando no hay sesión activa) */}
+        {!currentUser && (
+          <div className="mb-6 bg-[#169B62]/10 border border-[#00E676]/25 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[#00E676]/15 flex items-center justify-center shrink-0">
+                <Wallet className="w-5 h-5 text-[#00E676]" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-white">
+                  Modo Demostración Interactivo
+                </h4>
+                <p className="text-xs text-[#BACBB9] mt-0.5">
+                  Estás explorando datos de prueba. Inicia sesión con Google para gestionar tus cuentas reales con saldos desde cero.
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => setActiveTab('movil')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#252525] hover:bg-[#2E2E2E] text-white text-xs font-semibold transition-colors whitespace-nowrap"
-              >
-                <Smartphone className="w-3.5 h-3.5 text-[#00DCF5]" />
-                <span>Simulador Móvil</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('flutter_arch')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#00E676]/15 hover:bg-[#00E676]/25 text-[#75FF9E] border border-[#00E676]/30 text-xs font-semibold transition-colors whitespace-nowrap"
-              >
-                <Code2 className="w-3.5 h-3.5" />
-                <span>Ver Arquitectura Flutter & Dart</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsLoginModalOpen(true)}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#00E676] hover:bg-[#62FF96] text-[#003918] font-bold text-xs transition-colors shrink-0 shadow-sm"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Iniciar Sesión</span>
+            </button>
           </div>
         )}
 
@@ -2943,10 +2996,7 @@ export default function App() {
                   Registros e Historial de Transacciones
                 </h1>
                 <p className="text-xs text-[#BACBB9] mt-1">
-                  Subcolección Cloud Firestore:{' '}
-                  <code className="text-[#75FF9E] font-mono">
-                    /users/&#123;userId&#125;/transactions
-                  </code>
+                  Consulta y gestiona el historial detallado de tus ingresos, gastos y transferencias.
                 </p>
               </div>
               <div className="flex items-center gap-2.5">
@@ -3082,10 +3132,7 @@ export default function App() {
                   Mis Cuentas en Wallet
                 </h1>
                 <p className="text-xs text-[#BACBB9] mt-1">
-                  Subcolección Cloud Firestore:{' '}
-                  <code className="text-[#75FF9E] font-mono">
-                    /users/&#123;userId&#125;/accounts
-                  </code>
+                  Administra tus cuentas bancarias, billeteras de efectivo y tarjetas.
                 </p>
               </div>
               <button
@@ -3144,10 +3191,7 @@ export default function App() {
                   Presupuestos Mensuales y Topes de Gasto
                 </h1>
                 <p className="text-xs text-[#BACBB9] mt-1">
-                  Subcolección Cloud Firestore:{' '}
-                  <code className="text-[#75FF9E] font-mono">
-                    /users/&#123;userId&#125;/budgets
-                  </code>
+                  Controla tus límites de gasto mensual por categoría.
                 </p>
               </div>
               <button
@@ -3202,26 +3246,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ==================== VIEW 6: VISTA MÓVIL (SIMULADOR STITCH) ==================== */}
-        {activeTab === 'movil' && (
-          <MobilePreviewView
-            userName={userNameDisplay}
-            accounts={accounts}
-            transactions={transactions}
-            budgets={budgets}
-            totalIncome={summary.totalIncome}
-            totalExpense={summary.totalExpense}
-            netWorth={totalNetBalance}
-            onOpenCalculator={(t) => {
-              setCalcInitialType(t || 'expense');
-              setIsCalcOpen(true);
-            }}
-            onOpenAddAccount={() => setIsAddAccountOpen(true)}
-          />
-        )}
-
-        {/* ==================== VIEW 7: ARQUITECTURA FLUTTER (TAREA 1 & 2) ==================== */}
-        {activeTab === 'flutter_arch' && <FlutterArchitectureExplorer />}
       </main>
 
       {/* Footer */}
@@ -3229,13 +3253,10 @@ export default function App() {
         <div className="max-w-[1480px] mx-auto px-4 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#BACBB9]">
           <div className="flex items-center gap-2">
             <Lock className="w-3.5 h-3.5 text-[#75FF9E]" />
-            <span>
-              Seguridad y cifrado bancario de nivel institucional · Cloud
-              Firestore Zero-Trust Rules
-            </span>
+            <span>Seguridad y privacidad garantizada · Cifrado en la nube</span>
           </div>
           <div>
-            © 2026 Wallet by BudgetBakers — Clean Architecture & Riverpod
+            © 2026 Wallet. Todos los derechos reservados.
           </div>
         </div>
       </footer>
@@ -3267,10 +3288,7 @@ export default function App() {
                   Configurar Ciclo Financiero y Quincenas
                 </h3>
                 <p className="text-xs text-[#BACBB9] mt-0.5">
-                  Modelo Firestore:{' '}
-                  <code className="text-[#00DCF5] font-mono">
-                    /users/&#123;userId&#125; (UserSettingsModel)
-                  </code>
+                  Ajusta tu día de corte de mes y división en dos quincenas.
                 </p>
               </div>
               <button
@@ -3551,27 +3569,36 @@ export default function App() {
       {isLoginModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
           <div className="w-full max-w-4xl bg-[#1E1E1E] rounded-3xl overflow-hidden shadow-2xl grid grid-cols-1 md:grid-cols-2 border border-white/10">
-            {/* Left Green Panel (Image 15) */}
+            {/* Left Green Panel */}
             <div className="bg-[#169B62] p-8 text-white flex flex-col justify-between">
               <div>
                 <span className="text-xs font-bold uppercase tracking-widest opacity-80">
-                  Wallet by BudgetBakers
+                  Wallet
                 </span>
                 <h2 className="text-3xl font-bold mt-2 leading-tight">
                   Tus finanzas en un solo lugar
                 </h2>
                 <p className="text-sm text-white/90 mt-4 leading-relaxed">
-                  Sumérgete en informes, crea presupuestos, sincroniza tus
-                  cuentas en Quetzales (GTQ) y persiste todas tus subcolecciones
-                  en Google Cloud Firestore.
+                  Lleva el control de tus ingresos, gastos y transferencias, crea presupuestos inteligentes y organiza tus quincenas de forma automática.
                 </p>
               </div>
-              <div className="mt-8 pt-6 border-t border-white/20 text-xs space-y-1 text-white/90 font-mono">
-                <div>• /users/&#123;userId&#125;/accounts</div>
-                <div>• /users/&#123;userId&#125;/transactions</div>
-                <div>• /users/&#123;userId&#125;/categories</div>
-                <div>• /users/&#123;userId&#125;/budgets</div>
-                <div>• /users/&#123;userId&#125;/summaries/&#123;year_month&#125;</div>
+              <div className="mt-8 pt-6 border-t border-white/20 text-xs space-y-2 text-white/95">
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-white shrink-0" />
+                  <span>Control de cuentas de banco, efectivo y tarjetas</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-white shrink-0" />
+                  <span>Gestión de quincenas y fechas de corte</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-white shrink-0" />
+                  <span>Presupuestos y límites de gasto por categoría</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-white shrink-0" />
+                  <span>Sincronización en la nube 100% privada</span>
+                </div>
               </div>
             </div>
 
@@ -3591,8 +3618,7 @@ export default function App() {
                     Iniciar sesión
                   </h3>
                   <p className="text-xs text-[#A0A0A0] mt-1">
-                    Autentícate con Firebase Auth para sincronizar tus datos en
-                    tiempo real.
+                    Accede con tu cuenta de Google para comenzar a registrar tus finanzas personales desde cero.
                   </p>
                 </div>
 
@@ -3602,7 +3628,7 @@ export default function App() {
                   className="w-full py-3.5 px-4 rounded-full bg-white hover:bg-neutral-100 text-[#121212] font-bold text-sm flex items-center justify-center gap-3 shadow-md transition-colors"
                 >
                   <LogIn className="w-4 h-4 text-[#008952]" />
-                  <span>Iniciar sesión con Google</span>
+                  <span>Continuar con Google</span>
                 </button>
 
                 <button
@@ -3610,12 +3636,12 @@ export default function App() {
                   onClick={() => setIsLoginModalOpen(false)}
                   className="w-full py-3 px-4 rounded-full bg-[#252525] hover:bg-[#2E2E2E] text-white text-xs font-semibold transition-colors"
                 >
-                  Continuar en Vista Previa Interactiva
+                  Explorar en Modo Demostración
                 </button>
               </div>
 
               <p className="text-[11px] text-[#A0A0A0] text-center mt-6">
-                Protegido por reglas Zero-Trust de Cloud Firestore.
+                Tus datos financieros son privados y solo accesibles por ti.
               </p>
             </div>
           </div>
