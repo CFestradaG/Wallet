@@ -361,6 +361,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 child: CustomPaint(
                   painter: _SparklinePainter(
                     color: ObsidianFlowColors.primaryContainer,
+                    hasMovements: state.recentTransactions.isNotEmpty && state.netWorthTotal != 0,
                   ),
                 ),
               ),
@@ -661,7 +662,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     BuildContext context,
     DashboardWalletState state,
   ) {
-    final totalExp = state.totalExpenses > 0 ? state.totalExpenses : 6950.00;
+    final totalExp = state.totalExpenses;
+    final sortedExpenses = state.expensesByCategory.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final hasExpenses = totalExp > 0 && sortedExpenses.isNotEmpty;
+
+    const palette = [
+      ObsidianFlowColors.outflowCrimson,
+      Color(0xFF00B4D8),
+      Color(0xFFFFB300),
+      Color(0xFF75FF9E),
+      Color(0xFFB388FF),
+    ];
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -693,9 +705,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
             ],
           ),
-          const Text(
-            'ÚLTIMOS 30 DÍAS',
-            style: TextStyle(
+          Text(
+            state.filterMode == PeriodFilterMode.fullPeriod
+                ? 'ESTE PERÍODO'
+                : state.currentSubPeriodLabel.toUpperCase(),
+            style: const TextStyle(
               color: ObsidianFlowColors.textSecondary,
               fontSize: 11,
               fontWeight: FontWeight.w600,
@@ -716,20 +730,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   fontFeatures: [FontFeature.tabularFigures()],
                 ),
               ),
-              const Column(
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    'vs período anterior',
+                  const Text(
+                    'Estado',
                     style: TextStyle(
                       color: ObsidianFlowColors.textSecondary,
                       fontSize: 11,
                     ),
                   ),
                   Text(
-                    '-12%',
+                    hasExpenses ? 'En tiempo real' : 'Sin movimientos',
                     style: TextStyle(
-                      color: ObsidianFlowColors.primaryContainer,
+                      color: hasExpenses
+                          ? ObsidianFlowColors.primaryContainer
+                          : ObsidianFlowColors.textSecondary,
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
@@ -741,7 +757,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           const SizedBox(height: 20),
           Row(
             children: [
-              // Donut Chart CustomPainter
+              // Donut Chart CustomPainter dinámico
               SizedBox(
                 width: 108,
                 height: 108,
@@ -750,7 +766,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   children: [
                     CustomPaint(
                       size: const Size(108, 108),
-                      painter: _ExpenseDonutPainter(),
+                      painter: _ExpenseDonutPainter(
+                        expensesByCategory: state.expensesByCategory,
+                        totalExpenses: totalExp,
+                      ),
                     ),
                     const Column(
                       mainAxisSize: MainAxisSize.min,
@@ -775,29 +794,44 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ),
               ),
               const SizedBox(width: 20),
-              // Leyenda de Categorías principales
+              // Leyenda de Categorías dinámica
               Expanded(
-                child: Column(
-                  children: [
-                    _buildLegendRow(
-                      color: ObsidianFlowColors.outflowCrimson,
-                      label: 'Comida y bebida',
-                      amount: 'GTQ 4,200',
-                    ),
-                    const SizedBox(height: 10),
-                    _buildLegendRow(
-                      color: const Color(0xFF00B4D8),
-                      label: 'Servicios',
-                      amount: 'GTQ 1,800',
-                    ),
-                    const SizedBox(height: 10),
-                    _buildLegendRow(
-                      color: const Color(0xFFFFB300),
-                      label: 'Entretenimiento',
-                      amount: 'GTQ 950',
-                    ),
-                  ],
-                ),
+                child: hasExpenses
+                    ? Column(
+                        children: [
+                          for (int i = 0; i < sortedExpenses.take(3).length; i++) ...[
+                            if (i > 0) const SizedBox(height: 10),
+                            _buildLegendRow(
+                              color: palette[i % palette.length],
+                              label: sortedExpenses[i].key,
+                              amount: _formatGtq(sortedExpenses[i].value),
+                            ),
+                          ],
+                        ],
+                      )
+                    : const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Sin gastos registrados',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Los gastos de este período aparecerán aquí agrupados.',
+                            style: TextStyle(
+                              color: ObsidianFlowColors.textSecondary,
+                              fontSize: 11,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
               ),
             ],
           ),
@@ -1083,41 +1117,66 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 /// CustomPainter para la curva Sparkline de la tarjeta de Patrimonio Neto
 class _SparklinePainter extends CustomPainter {
   final Color color;
-  const _SparklinePainter({required this.color});
+  final bool hasMovements;
+  const _SparklinePainter({required this.color, this.hasMovements = true});
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = color
+      ..color = hasMovements ? color : color.withOpacity(0.2)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.2
       ..strokeCap = StrokeCap.round;
 
-    final path = Path()
-      ..moveTo(0, size.height * 0.85)
-      ..quadraticBezierTo(
+    final path = Path();
+    if (!hasMovements) {
+      // Línea horizontal neutra cuando no hay movimientos
+      path.moveTo(0, size.height * 0.5);
+      path.lineTo(size.width, size.height * 0.5);
+    } else {
+      path.moveTo(0, size.height * 0.85);
+      path.quadraticBezierTo(
         size.width * 0.25,
         size.height * 0.45,
         size.width * 0.5,
         size.height * 0.65,
-      )
-      ..quadraticBezierTo(
+      );
+      path.quadraticBezierTo(
         size.width * 0.78,
         size.height * 0.85,
         size.width * 0.9,
         size.height * 0.15,
-      )
-      ..lineTo(size.width, size.height * 0.25);
+      );
+      path.lineTo(size.width, size.height * 0.25);
+    }
 
     canvas.drawPath(path, paint);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _SparklinePainter oldDelegate) =>
+      oldDelegate.hasMovements != hasMovements || oldDelegate.color != color;
 }
 
-/// CustomPainter para el gráfico Donut de Estructura de Gastos
+/// CustomPainter para el gráfico Donut de Estructura de Gastos dinámico
 class _ExpenseDonutPainter extends CustomPainter {
+  final Map<String, double> expensesByCategory;
+  final double totalExpenses;
+
+  const _ExpenseDonutPainter({
+    required this.expensesByCategory,
+    required this.totalExpenses,
+  });
+
+  static const List<Color> _palette = [
+    ObsidianFlowColors.outflowCrimson,
+    Color(0xFF00B4D8),
+    Color(0xFFFFB300),
+    Color(0xFF75FF9E),
+    Color(0xFFB388FF),
+    Color(0xFFFF8A80),
+  ];
+
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
@@ -1131,26 +1190,36 @@ class _ExpenseDonutPainter extends CustomPainter {
 
     canvas.drawCircle(center, radius, trackPaint);
 
-    final segments = [
-      (color: ObsidianFlowColors.outflowCrimson, sweep: 0.55),
-      (color: const Color(0xFF00B4D8), sweep: 0.25),
-      (color: const Color(0xFFFFB300), sweep: 0.15),
-    ];
+    if (totalExpenses <= 0 || expensesByCategory.isEmpty) {
+      // Solo pinta el track circular vacío sin arcos ficticios
+      return;
+    }
+
+    final sortedEntries = expensesByCategory.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
     double startAngle = -math.pi / 2;
-    for (final seg in segments) {
+    int colorIdx = 0;
+
+    for (final entry in sortedEntries) {
+      final sweepRatio = (entry.value / totalExpenses).clamp(0.0, 1.0);
+      if (sweepRatio <= 0.001) continue;
+
       final paint = Paint()
-        ..color = seg.color
+        ..color = _palette[colorIdx % _palette.length]
         ..style = PaintingStyle.stroke
         ..strokeWidth = 11
-        ..strokeCap = StrokeCap.round;
+        ..strokeCap = sortedEntries.length == 1 ? StrokeCap.round : StrokeCap.butt;
 
-      final sweepAngle = seg.sweep * 2 * math.pi;
+      final sweepAngle = sweepRatio * 2 * math.pi;
       canvas.drawArc(rect, startAngle, sweepAngle, false, paint);
-      startAngle += sweepAngle + 0.08;
+      startAngle += sweepAngle;
+      colorIdx++;
     }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _ExpenseDonutPainter oldDelegate) =>
+      oldDelegate.totalExpenses != totalExpenses ||
+      oldDelegate.expensesByCategory != expensesByCategory;
 }

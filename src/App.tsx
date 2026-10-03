@@ -897,6 +897,129 @@ export default function App() {
     return Array.from(dayMap.values());
   }, [filteredTransactions]);
 
+  // Dynamic Daily Balance Trend from real transactions (Zero Mock Data)
+  const dailyBalanceTrendData = useMemo(() => {
+    if (filteredTransactions.length === 0) {
+      return {
+        pointsStr: '',
+        polygonStr: '',
+        dataPoints: [],
+        minBal: 0,
+        maxBal: 0,
+        dates: [] as string[],
+        hasData: false,
+      };
+    }
+
+    // Sort transactions chronologically
+    const sorted = [...filteredTransactions].sort((a, b) =>
+      a.dateIso.localeCompare(b.dateIso)
+    );
+
+    // Group net delta per day
+    const dayDeltaMap = new Map<
+      string,
+      { date: string; label: string; net: number }
+    >();
+    for (const tx of sorted) {
+      const dayKey = tx.dateIso.slice(0, 10);
+      const dObj = new Date(tx.dateIso);
+      const label = `${dObj.getDate()} ${
+        [
+          'Ene',
+          'Feb',
+          'Mar',
+          'Abr',
+          'May',
+          'Jun',
+          'Jul',
+          'Ago',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dic',
+        ][dObj.getMonth()]
+      }`;
+      const existing = dayDeltaMap.get(dayKey) || {
+        date: dayKey,
+        label,
+        net: 0,
+      };
+      if (tx.type === 'income') existing.net += tx.amount;
+      if (tx.type === 'expense') existing.net -= tx.amount;
+      dayDeltaMap.set(dayKey, existing);
+    }
+
+    const days = Array.from(dayDeltaMap.values());
+    if (days.length === 0) {
+      return {
+        pointsStr: '',
+        polygonStr: '',
+        dataPoints: [],
+        minBal: 0,
+        maxBal: 0,
+        dates: [] as string[],
+        hasData: false,
+      };
+    }
+
+    // Cumulative balance calculation
+    const totalPeriodNet = days.reduce((sum, d) => sum + d.net, 0);
+    const startBal = totalNetBalance - totalPeriodNet;
+
+    let runningBal = startBal;
+    const balances = days.map((d) => {
+      runningBal += d.net;
+      return {
+        date: d.date,
+        label: d.label,
+        balance: runningBal,
+      };
+    });
+
+    const balValues = balances.map((b) => b.balance);
+    let minBal = Math.min(...balValues);
+    let maxBal = Math.max(...balValues);
+
+    const range = maxBal - minBal;
+    const padding =
+      range === 0 ? Math.max(10, Math.abs(maxBal) * 0.1 || 10) : range * 0.15;
+    minBal -= padding;
+    maxBal += padding;
+
+    const svgWidth = 320;
+    const svgHeight = 110;
+    const chartTop = 15;
+    const chartBottom = 90;
+    const chartHeight = chartBottom - chartTop;
+
+    const dataPoints = balances.map((b, i) => {
+      const x =
+        balances.length === 1
+          ? svgWidth / 2
+          : 15 + (i / (balances.length - 1)) * (svgWidth - 30);
+      const pct =
+        maxBal === minBal ? 0.5 : (b.balance - minBal) / (maxBal - minBal);
+      const y = chartBottom - pct * chartHeight;
+      return { ...b, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+    });
+
+    const pointsStr = dataPoints.map((p) => `${p.x},${p.y}`).join(' ');
+    const firstX = dataPoints[0].x;
+    const lastX = dataPoints[dataPoints.length - 1].x;
+    const polygonStr = `${pointsStr} ${lastX},${svgHeight} ${firstX},${svgHeight}`;
+
+    return {
+      pointsStr,
+      polygonStr,
+      dataPoints,
+      minBal,
+      maxBal,
+      dates: dataPoints.map((p) => p.label),
+      hasData: true,
+    };
+  }, [filteredTransactions, totalNetBalance]);
+
   // Handlers: Authentication
   const handleGoogleLogin = async () => {
     try {
@@ -2642,8 +2765,13 @@ export default function App() {
                     <h2 className="text-lg font-bold text-white">
                       Tendencia de saldo
                     </h2>
-                    <span className="text-xs font-mono text-[#BACBB9]">
-                      Octubre 2026
+                    <span className="text-xs font-mono text-[#BACBB9] capitalize">
+                      {periodFilterMode === 'all'
+                        ? 'Historial Completo'
+                        : referenceDate.toLocaleDateString('es-GT', {
+                            month: 'long',
+                            year: 'numeric',
+                          })}
                     </span>
                   </div>
                   <div className="flex items-baseline justify-between mt-2 mb-4">
@@ -2665,69 +2793,105 @@ export default function App() {
                       </span>
                     </div>
                     <span className="text-xs font-mono text-[#BACBB9]">
-                      {transactions.length > 0 ? 'Variación · en tiempo real' : 'Sin movimientos'}
+                      {filteredTransactions.length > 0 ? 'Variación · en tiempo real' : 'Sin movimientos'}
                     </span>
                   </div>
                 </div>
 
                 <div className="w-full relative h-36 flex flex-col justify-end">
-                  <svg
-                    className="w-full h-28"
-                    preserveAspectRatio="none"
-                    viewBox="0 0 320 110"
-                  >
-                    <defs>
-                      <linearGradient id="gradBalance" x1="0" x2="0" y1="0" y2="1">
-                        <stop offset="0%" stopColor="#00dcf5" stopOpacity="0.35" />
-                        <stop offset="100%" stopColor="#00dcf5" stopOpacity="0.0" />
-                      </linearGradient>
-                    </defs>
-                    <line
-                      stroke="#353534"
-                      strokeDasharray="3,3"
-                      strokeWidth="1"
-                      x1="0"
-                      x2="320"
-                      y1="20"
-                      y2="20"
-                    />
-                    <line
-                      stroke="#353534"
-                      strokeDasharray="3,3"
-                      strokeWidth="1"
-                      x1="0"
-                      x2="320"
-                      y1="50"
-                      y2="50"
-                    />
-                    <line
-                      stroke="#353534"
-                      strokeDasharray="3,3"
-                      strokeWidth="1"
-                      x1="0"
-                      x2="320"
-                      y1="80"
-                      y2="80"
-                    />
-                    <polygon
-                      fill="url(#gradBalance)"
-                      points="0,75 25,75 50,73 75,70 100,68 125,60 150,62 175,64 200,65 225,65 250,65 275,65 300,65 320,65 320,110 0,110"
-                    />
-                    <polyline
-                      fill="none"
-                      points="0,75 25,75 50,73 75,70 100,68 125,60 150,62 175,64 200,65 225,65 250,65 275,65 300,65 320,65"
-                      stroke="#00daf3"
-                      strokeWidth="2.5"
-                    />
-                    <circle cx="125" cy="60" fill="#75ff9e" r="4.5" />
-                  </svg>
-                  <div className="w-full flex items-center justify-between text-[#BACBB9] font-mono text-[10px] pt-1">
-                    <span>1 Oct</span>
-                    <span>7 Oct</span>
-                    <span>14 Oct</span>
-                    <span>22 Oct</span>
-                    <span>31 Oct</span>
-                  </div>
+                  {dailyBalanceTrendData.hasData ? (
+                    <>
+                      <svg
+                        className="w-full h-28"
+                        preserveAspectRatio="none"
+                        viewBox="0 0 320 110"
+                      >
+                        <defs>
+                          <linearGradient id="gradBalance" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="0%" stopColor="#00dcf5" stopOpacity="0.35" />
+                            <stop offset="100%" stopColor="#00dcf5" stopOpacity="0.0" />
+                          </linearGradient>
+                        </defs>
+                        <line
+                          stroke="#353534"
+                          strokeDasharray="3,3"
+                          strokeWidth="1"
+                          x1="0"
+                          x2="320"
+                          y1="20"
+                          y2="20"
+                        />
+                        <line
+                          stroke="#353534"
+                          strokeDasharray="3,3"
+                          strokeWidth="1"
+                          x1="0"
+                          x2="320"
+                          y1="50"
+                          y2="50"
+                        />
+                        <line
+                          stroke="#353534"
+                          strokeDasharray="3,3"
+                          strokeWidth="1"
+                          x1="0"
+                          x2="320"
+                          y1="80"
+                          y2="80"
+                        />
+                        <polygon
+                          fill="url(#gradBalance)"
+                          points={dailyBalanceTrendData.polygonStr}
+                        />
+                        <polyline
+                          fill="none"
+                          points={dailyBalanceTrendData.pointsStr}
+                          stroke="#00daf3"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        {dailyBalanceTrendData.dataPoints.map((pt, idx) => (
+                          <circle
+                            key={pt.date || idx}
+                            cx={pt.x}
+                            cy={pt.y}
+                            fill={
+                              idx === dailyBalanceTrendData.dataPoints.length - 1
+                                ? '#75ff9e'
+                                : '#00daf3'
+                            }
+                            r="3.5"
+                          />
+                        ))}
+                      </svg>
+                      <div className="w-full flex items-center justify-between text-[#BACBB9] font-mono text-[10px] pt-1">
+                        <span>{dailyBalanceTrendData.dates[0] || ''}</span>
+                        {dailyBalanceTrendData.dates.length > 2 && (
+                          <span>
+                            {
+                              dailyBalanceTrendData.dates[
+                                Math.floor(dailyBalanceTrendData.dates.length / 2)
+                              ]
+                            }
+                          </span>
+                        )}
+                        <span>
+                          {dailyBalanceTrendData.dates[
+                            dailyBalanceTrendData.dates.length - 1
+                          ] || ''}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="w-full h-28 flex flex-col items-center justify-center border border-dashed border-white/10 rounded-lg text-center px-3">
+                      <TrendingUp className="w-5 h-5 text-[#BACBB9]/50 mb-1" />
+                      <span className="text-xs text-[#BACBB9]">Sin movimientos</span>
+                      <span className="text-[10px] text-[#BACBB9]/60">
+                        Registra transacciones para ver la curva de saldo
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between text-xs text-[#BACBB9]">
@@ -2784,36 +2948,50 @@ export default function App() {
                         stroke="#2a2a2a"
                         strokeWidth="12"
                       />
-                      <circle
-                        cx="50"
-                        cy="50"
-                        fill="transparent"
-                        r="40"
-                        stroke="#00e676"
-                        strokeDasharray="105.5 251.2"
-                        strokeDashoffset="0"
-                        strokeWidth="12"
-                      />
-                      <circle
-                        cx="50"
-                        cy="50"
-                        fill="transparent"
-                        r="40"
-                        stroke="#00dcf5"
-                        strokeDasharray="70.3 251.2"
-                        strokeDashoffset="-105.5"
-                        strokeWidth="12"
-                      />
-                      <circle
-                        cx="50"
-                        cy="50"
-                        fill="transparent"
-                        r="40"
-                        stroke="#ffa8a3"
-                        strokeDasharray="37.7 251.2"
-                        strokeDashoffset="-175.8"
-                        strokeWidth="12"
-                      />
+                      {expenseBreakdown.total > 0 &&
+                        expenseBreakdown.items.length > 0 &&
+                        (() => {
+                          const C = 251.327;
+                          let cumulative = 0;
+                          const fallbackColors = [
+                            '#00e676',
+                            '#00dcf5',
+                            '#ffa8a3',
+                            '#a3f1ff',
+                            '#ffb300',
+                            '#b388ff',
+                          ];
+                          return expenseBreakdown.items.map((item, idx) => {
+                            const sliceLen =
+                              (item.amount / expenseBreakdown.total) * C;
+                            const dashArray = `${sliceLen.toFixed(2)} ${(
+                              C - sliceLen
+                            ).toFixed(2)}`;
+                            const dashOffset = (-cumulative).toFixed(2);
+                            cumulative += sliceLen;
+                            const color =
+                              item.color ||
+                              fallbackColors[idx % fallbackColors.length];
+                            return (
+                              <circle
+                                key={item.id}
+                                cx="50"
+                                cy="50"
+                                fill="transparent"
+                                r="40"
+                                stroke={color}
+                                strokeDasharray={dashArray}
+                                strokeDashoffset={dashOffset}
+                                strokeWidth="12"
+                                strokeLinecap={
+                                  expenseBreakdown.items.length === 1
+                                    ? 'round'
+                                    : 'butt'
+                                }
+                              />
+                            );
+                          });
+                        })()}
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
                       <span className="text-[9px] text-[#BACBB9] uppercase">
@@ -3470,46 +3648,50 @@ export default function App() {
                       stroke="#2a2a2a"
                       strokeWidth="12"
                     />
-                    <circle
-                      cx="50"
-                      cy="50"
-                      fill="transparent"
-                      r="40"
-                      stroke="#00e676"
-                      strokeDasharray="105.5 251.2"
-                      strokeDashoffset="0"
-                      strokeWidth="12"
-                    />
-                    <circle
-                      cx="50"
-                      cy="50"
-                      fill="transparent"
-                      r="40"
-                      stroke="#00dcf5"
-                      strokeDasharray="70.3 251.2"
-                      strokeDashoffset="-105.5"
-                      strokeWidth="12"
-                    />
-                    <circle
-                      cx="50"
-                      cy="50"
-                      fill="transparent"
-                      r="40"
-                      stroke="#ffa8a3"
-                      strokeDasharray="37.7 251.2"
-                      strokeDashoffset="-175.8"
-                      strokeWidth="12"
-                    />
-                    <circle
-                      cx="50"
-                      cy="50"
-                      fill="transparent"
-                      r="40"
-                      stroke="#a3f1ff"
-                      strokeDasharray="37.7 251.2"
-                      strokeDashoffset="-213.5"
-                      strokeWidth="12"
-                    />
+                    {expenseBreakdown.total > 0 &&
+                      expenseBreakdown.items.length > 0 &&
+                      (() => {
+                        const C = 251.327;
+                        let cumulative = 0;
+                        const fallbackColors = [
+                          '#00e676',
+                          '#00dcf5',
+                          '#ffa8a3',
+                          '#a3f1ff',
+                          '#ffb300',
+                          '#b388ff',
+                        ];
+                        return expenseBreakdown.items.map((item, idx) => {
+                          const sliceLen =
+                            (item.amount / expenseBreakdown.total) * C;
+                          const dashArray = `${sliceLen.toFixed(2)} ${(
+                            C - sliceLen
+                          ).toFixed(2)}`;
+                          const dashOffset = (-cumulative).toFixed(2);
+                          cumulative += sliceLen;
+                          const color =
+                            item.color ||
+                            fallbackColors[idx % fallbackColors.length];
+                          return (
+                            <circle
+                              key={item.id}
+                              cx="50"
+                              cy="50"
+                              fill="transparent"
+                              r="40"
+                              stroke={color}
+                              strokeDasharray={dashArray}
+                              strokeDashoffset={dashOffset}
+                              strokeWidth="12"
+                              strokeLinecap={
+                                expenseBreakdown.items.length === 1
+                                  ? 'round'
+                                  : 'butt'
+                              }
+                            />
+                          );
+                        });
+                      })()}
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
                     <span className="text-[10px] text-[#BACBB9] uppercase">

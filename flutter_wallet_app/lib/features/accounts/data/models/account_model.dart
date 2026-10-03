@@ -30,6 +30,15 @@ class AccountEntity {
   final String colorHex;
   final String iconName;
   final String subtitle;
+  // Tarjetas de crédito
+  final double? creditLimit;
+  final double? currentDebt;
+  final double? availableCredit;
+  final int? cutoffDay;
+  final int? paymentDay;
+  final double? minimumPayment;
+  final double? interestRate;
+  final int? installments;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -43,6 +52,14 @@ class AccountEntity {
     required this.colorHex,
     required this.iconName,
     required this.subtitle,
+    this.creditLimit,
+    this.currentDebt,
+    this.availableCredit,
+    this.cutoffDay,
+    this.paymentDay,
+    this.minimumPayment,
+    this.interestRate,
+    this.installments,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -63,6 +80,14 @@ class AccountEntity {
     String? colorHex,
     String? iconName,
     String? subtitle,
+    double? creditLimit,
+    double? currentDebt,
+    double? availableCredit,
+    int? cutoffDay,
+    int? paymentDay,
+    double? minimumPayment,
+    double? interestRate,
+    int? installments,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -76,6 +101,14 @@ class AccountEntity {
       colorHex: colorHex ?? this.colorHex,
       iconName: iconName ?? this.iconName,
       subtitle: subtitle ?? this.subtitle,
+      creditLimit: creditLimit ?? this.creditLimit,
+      currentDebt: currentDebt ?? this.currentDebt,
+      availableCredit: availableCredit ?? this.availableCredit,
+      cutoffDay: cutoffDay ?? this.cutoffDay,
+      paymentDay: paymentDay ?? this.paymentDay,
+      minimumPayment: minimumPayment ?? this.minimumPayment,
+      interestRate: interestRate ?? this.interestRate,
+      installments: installments ?? this.installments,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -95,6 +128,14 @@ class AccountModel extends AccountEntity {
     required super.colorHex,
     required super.iconName,
     required super.subtitle,
+    super.creditLimit,
+    super.currentDebt,
+    super.availableCredit,
+    super.cutoffDay,
+    super.paymentDay,
+    super.minimumPayment,
+    super.interestRate,
+    super.installments,
     required super.createdAt,
     required super.updatedAt,
   });
@@ -122,6 +163,14 @@ class AccountModel extends AccountEntity {
       colorHex: (data['colorHex'] as String?) ?? '#00DCF5',
       iconName: (data['iconName'] as String?) ?? 'payments',
       subtitle: (data['subtitle'] as String?) ?? 'SALDO DISPONIBLE',
+      creditLimit: (data['creditLimit'] as num?)?.toDouble(),
+      currentDebt: (data['currentDebt'] as num?)?.toDouble(),
+      availableCredit: (data['availableCredit'] as num?)?.toDouble(),
+      cutoffDay: (data['cutoffDay'] as num?)?.toInt(),
+      paymentDay: (data['paymentDay'] as num?)?.toInt(),
+      minimumPayment: (data['minimumPayment'] as num?)?.toDouble(),
+      interestRate: (data['interestRate'] as num?)?.toDouble(),
+      installments: (data['installments'] as num?)?.toInt(),
       createdAt: createdTs is Timestamp ? createdTs.toDate() : DateTime.now(),
       updatedAt: updatedTs is Timestamp ? updatedTs.toDate() : DateTime.now(),
     );
@@ -138,6 +187,14 @@ class AccountModel extends AccountEntity {
       'colorHex': colorHex,
       'iconName': iconName,
       'subtitle': subtitle.length > 100 ? subtitle.substring(0, 100) : subtitle,
+      if (creditLimit != null) 'creditLimit': creditLimit,
+      if (currentDebt != null) 'currentDebt': currentDebt,
+      if (availableCredit != null) 'availableCredit': availableCredit,
+      if (cutoffDay != null) 'cutoffDay': cutoffDay,
+      if (paymentDay != null) 'paymentDay': paymentDay,
+      if (minimumPayment != null) 'minimumPayment': minimumPayment,
+      if (interestRate != null) 'interestRate': interestRate,
+      if (installments != null) 'installments': installments,
       if (isNew) 'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };

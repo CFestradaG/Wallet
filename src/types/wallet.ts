@@ -35,6 +35,15 @@ export interface WalletAccount {
   colorHex: string;
   iconName: string;
   subtitle: string;
+  // Tarjetas de crédito (Credit card specific fields)
+  creditLimit?: number;
+  currentDebt?: number;
+  availableCredit?: number;
+  cutoffDay?: number;
+  paymentDay?: number;
+  minimumPayment?: number;
+  interestRate?: number;
+  installments?: number;
   createdAt?: unknown;
   updatedAt?: unknown;
 }

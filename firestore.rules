@@ -61,7 +61,11 @@ service cloud.firestore {
 
     function isValidAccount(data) {
       return data.keys().hasAll(['userId', 'name', 'type', 'balance', 'currency', 'colorHex', 'iconName', 'subtitle', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'userId', 'name', 'type', 'balance', 'currentBalance', 'currency', 'colorHex', 'iconName', 'subtitle', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'userId', 'name', 'type', 'balance', 'currentBalance', 'currency', 'colorHex', 'iconName', 'subtitle',
+          'creditLimit', 'currentDebt', 'availableCredit', 'cutoffDay', 'paymentDay', 'minimumPayment', 'interestRate', 'installments',
+          'createdAt', 'updatedAt'
+        ])
         && isValidId(data.userId)
         && data.userId == request.auth.uid
         && (!('id' in data) || isValidId(data.id))
@@ -73,6 +77,14 @@ service cloud.firestore {
         && data.colorHex is string && data.colorHex.size() >= 4 && data.colorHex.size() <= 9
         && data.iconName is string && data.iconName.size() >= 1 && data.iconName.size() <= 40
         && data.subtitle is string && data.subtitle.size() >= 0 && data.subtitle.size() <= 100
+        && (!('creditLimit' in data) || (data.creditLimit is number && data.creditLimit >= 0))
+        && (!('currentDebt' in data) || (data.currentDebt is number && data.currentDebt >= 0))
+        && (!('availableCredit' in data) || data.availableCredit is number)
+        && (!('cutoffDay' in data) || (data.cutoffDay is number && data.cutoffDay >= 1 && data.cutoffDay <= 31))
+        && (!('paymentDay' in data) || (data.paymentDay is number && data.paymentDay >= 1 && data.paymentDay <= 31))
+        && (!('minimumPayment' in data) || (data.minimumPayment is number && data.minimumPayment >= 0))
+        && (!('interestRate' in data) || (data.interestRate is number && data.interestRate >= 0))
+        && (!('installments' in data) || (data.installments is number && data.installments >= 0))
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -213,7 +225,7 @@ service cloud.firestore {
           && incoming().userId == existing().userId
           && incoming().createdAt == existing().createdAt
           && incoming().updatedAt == request.time
-          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'type', 'balance', 'currentBalance', 'currency', 'colorHex', 'iconName', 'subtitle', 'updatedAt'])
+          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'type', 'balance', 'currentBalance', 'currency', 'colorHex', 'iconName', 'subtitle', 'creditLimit', 'currentDebt', 'availableCredit', 'cutoffDay', 'paymentDay', 'minimumPayment', 'interestRate', 'installments', 'updatedAt'])
           && userExists(userId);
         allow delete: if isOwner(userId) && isValidId(userId) && isValidId(accountId) && userExists(userId);
       }

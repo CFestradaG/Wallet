@@ -34,6 +34,26 @@ class BudgetModel {
   double get percentage =>
       limitAmount > 0 ? (spentAmount / limitAmount).clamp(0.0, 1.0) : 0.0;
 
+  /// Calcula el gasto real derivado directamente de las transacciones (Single Source of Truth)
+  double calculateSpentFromTransactions(List<dynamic> transactions) {
+    double total = 0.0;
+    for (final tx in transactions) {
+      final isExp = tx.isExpense ?? (tx.type == 'expense');
+      final catId = tx.categoryId;
+      if (isExp && catId == categoryId) {
+        total += (tx.amount as num).toDouble();
+      }
+    }
+    return total;
+  }
+
+  /// Porcentaje derivado directamente de las transacciones
+  double calculatePercentage(List<dynamic> transactions) {
+    if (limitAmount <= 0) return 0.0;
+    final spent = calculateSpentFromTransactions(transactions);
+    return (spent / limitAmount).clamp(0.0, 1.0);
+  }
+
   factory BudgetModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
     final createdTs = data['createdAt'];
