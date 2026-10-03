@@ -1,0 +1,58 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "fintrack-gt",
+          "appId": "1:862971153777:android:2b3f32e77981d69fabbad0",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "fintrack-gt",
+          "appId": "1:862971153777:ios:158c6228ec03bf18abbad0",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "macos": {
+        "default": {
+          "projectId": "fintrack-gt",
+          "appId": "1:862971153777:ios:158c6228ec03bf18abbad0",
+          "uploadDebugSymbols": false,
+          "fileOutput": "macos/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "fintrack-gt",
+          "configurations": {
+            "android": "1:862971153777:android:2b3f32e77981d69fabbad0",
+            "ios": "1:862971153777:ios:158c6228ec03bf18abbad0",
+            "macos": "1:862971153777:ios:158c6228ec03bf18abbad0",
+            "web": "1:862971153777:web:fc1ecc508e7da70dabbad0",
+            "windows": "1:862971153777:web:c92c30244578d39dabbad0"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

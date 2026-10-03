@@ -257,6 +257,11 @@ export default function App() {
     setTimeout(() => setStatusBanner(null), 3500);
   };
 
+  const isPermissionDeniedError = (error: unknown): boolean => {
+    const msg = error instanceof Error ? error.message : String(error);
+    return /Missing or insufficient permissions|PERMISSION_DENIED|permission/i.test(msg);
+  };
+
   // 1. Listen to Firebase Auth State
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -1092,6 +1097,72 @@ export default function App() {
             : `Transacción atómica (${data.type.toUpperCase()}) registrada en ${targetPeriodId}`
         );
       } catch (error) {
+        if (isPermissionDeniedError(error)) {
+          const fallbackTx: WalletTransaction = {
+            id: txId,
+            userId: uid,
+            accountId: acc.id,
+            accountName: acc.name,
+            toAccountId: data.type === 'transfer' ? toAcc?.id : undefined,
+            toAccountName: data.type === 'transfer' ? toAcc?.name : undefined,
+            categoryId: cat.id,
+            categoryName: cat.name,
+            categoryIcon: cat.iconName,
+            categoryColor: cat.colorHex,
+            subcategory: data.subcategory,
+            type: data.type,
+            amount: data.amount,
+            currency: 'GTQ',
+            note: data.note,
+            dateIso: data.dateIso,
+            yearMonth: targetPeriodId,
+            periodId: targetPeriodId,
+          };
+
+          setTransactions((prev) =>
+            isEditing
+              ? prev.map((t) => (t.id === txId ? fallbackTx : t))
+              : [fallbackTx, ...prev]
+          );
+
+          setAccounts((prev) =>
+            prev.map((a) => {
+              const delta = accountDeltas[a.id];
+              if (!delta) return a;
+              const baseBal = Number(a.currentBalance ?? a.balance ?? 0);
+              const nextBal = Number((baseBal + delta).toFixed(2));
+              return {
+                ...a,
+                balance: nextBal,
+                currentBalance: nextBal,
+              };
+            })
+          );
+
+          setSummary((prev) => {
+            const oldInc = originalTx && originalTx.type === 'income' ? originalTx.amount : 0;
+            const oldExp = originalTx && originalTx.type === 'expense' ? originalTx.amount : 0;
+            const newInc = data.type === 'income' ? data.amount : 0;
+            const newExp = data.type === 'expense' ? data.amount : 0;
+            const totalIncome = Math.max(0, Number((prev.totalIncome - oldInc + newInc).toFixed(2)));
+            const totalExpense = Math.max(0, Number((prev.totalExpense - oldExp + newExp).toFixed(2)));
+            const netCashFlow = Number((totalIncome - totalExpense).toFixed(2));
+            return {
+              ...prev,
+              id: targetPeriodId,
+              yearMonth: targetPeriodId,
+              periodId: targetPeriodId,
+              totalIncome,
+              totalExpense,
+              netCashFlow,
+              savingsRate: totalIncome > 0 ? Number(((netCashFlow / totalIncome) * 100).toFixed(1)) : 0,
+            };
+          });
+
+          showToast('Permisos de Firestore insuficientes; se guardó localmente en modo demo.');
+          setEditingTransaction(null);
+          return;
+        }
         handleFirestoreError(
           error,
           OperationType.WRITE,
@@ -1239,6 +1310,27 @@ export default function App() {
         });
         showToast(`Cuenta "${newAccName}" creada en Cloud Firestore`);
       } catch (err) {
+        if (isPermissionDeniedError(err)) {
+          setAccounts((prev) => [
+            ...prev,
+            {
+              id: accId,
+              userId: uid,
+              name: newAccName.trim(),
+              type: newAccType,
+              balance: bal,
+              currentBalance: bal,
+              currency: 'GTQ',
+              colorHex: colorMap[newAccType],
+              iconName: iconMap[newAccType],
+              subtitle: newAccSubtitle.trim(),
+            },
+          ]);
+          showToast('Permisos de Firestore insuficientes; cuenta creada localmente en modo demo.');
+          setNewAccName('');
+          setIsAddAccountOpen(false);
+          return;
+        }
         handleFirestoreError(
           err,
           OperationType.CREATE,
@@ -1339,14 +1431,6 @@ export default function App() {
     setEditingAccount(null);
   };
 
-  const handleDeleteAccount = (acc: WalletAccount) => {
-    setDeleteConfirmTarget({
-      type: 'account',
-      id: acc.id,
-      name: acc.name,
-    });
-  };
-
   // --- CATEGORY & SUBCATEGORY MANAGEMENT ---
   const handleOpenAddCategory = () => {
     setCatFormName('');
@@ -1409,6 +1493,12 @@ export default function App() {
           `Categoría "${newCatData.name}" creada con ${newCatData.subcategories.length} subcategorías`
         );
       } catch (err) {
+        if (isPermissionDeniedError(err)) {
+          setCategories((prev) => [...prev, { ...newCatData, userId: uid } as WalletCategory]);
+          showToast('Permisos de Firestore insuficientes; categoría creada localmente.');
+          setIsAddCategoryOpen(false);
+          return;
+        }
         handleFirestoreError(
           err,
           OperationType.CREATE,
@@ -1474,6 +1564,58 @@ export default function App() {
       id: cat.id,
       name: cat.name,
     });
+  };
+
+  const handleDeleteTarget = async () => {
+    if (!deleteConfirmTarget) return;
+    const { type, id, name } = deleteConfirmTarget;
+
+    if (currentUser) {
+      const uid = currentUser.uid;
+      try {
+        if (type === 'category') {
+          await deleteDoc(doc(db, 'users', uid, 'categories', id));
+        } else if (type === 'account') {
+          await deleteDoc(doc(db, 'users', uid, 'accounts', id));
+        } else if (type === 'budget') {
+          await deleteDoc(doc(db, 'users', uid, 'budgets', id));
+        }
+        showToast(`"${name}" eliminado.`);
+      } catch (err) {
+        if (isPermissionDeniedError(err)) {
+          if (type === 'category') {
+            setCategories((prev) => prev.filter((cat) => cat.id !== id));
+          } else if (type === 'account') {
+            setAccounts((prev) => prev.filter((account) => account.id !== id));
+          } else if (type === 'budget') {
+            setBudgets((prev) => prev.filter((budget) => budget.id !== id));
+          }
+          showToast('Permisos de Firestore insuficientes; elemento eliminado localmente.');
+          setDeleteConfirmTarget(null);
+          return;
+        }
+        handleFirestoreError(
+          err,
+          OperationType.DELETE,
+          type === 'category'
+            ? `users/${uid}/categories/${id}`
+            : type === 'account'
+            ? `users/${uid}/accounts/${id}`
+            : `users/${uid}/budgets/${id}`
+        );
+      }
+    } else {
+      if (type === 'category') {
+        setCategories((prev) => prev.filter((cat) => cat.id !== id));
+      } else if (type === 'account') {
+        setAccounts((prev) => prev.filter((account) => account.id !== id));
+      } else if (type === 'budget') {
+        setBudgets((prev) => prev.filter((budget) => budget.id !== id));
+      }
+      showToast(`"${name}" eliminado.`);
+    }
+
+    setDeleteConfirmTarget(null);
   };
 
   const handleQuickAddSubcategoryToCategory = async (
@@ -1569,6 +1711,27 @@ export default function App() {
         });
         showToast(`Presupuesto "${newBudgetName}" guardado en Firestore (${budgetPeriod})`);
       } catch (err) {
+        if (isPermissionDeniedError(err)) {
+          setBudgets((prev) => [
+            ...prev,
+            {
+              id: budId,
+              userId: uid,
+              name: newBudgetName.trim(),
+              categoryId: cat.id,
+              limitAmount: limit,
+              spentAmount: 0,
+              currency: 'GTQ',
+              period: budgetPeriod,
+              iconName: cat.iconName,
+              colorHex: cat.colorHex,
+            },
+          ]);
+          showToast('Permisos de Firestore insuficientes; presupuesto creado localmente.');
+          setNewBudgetName('');
+          setIsAddBudgetOpen(false);
+          return;
+        }
         handleFirestoreError(
           err,
           OperationType.CREATE,
@@ -1656,6 +1819,22 @@ export default function App() {
   };
 
   const handleDeleteBudget = async (b: WalletBudget) => {
+    setDeleteConfirmTarget({
+      type: 'budget',
+      id: b.id,
+      name: b.name,
+    });
+  };
+
+  const handleDeleteAccount = (acc: WalletAccount) => {
+    setDeleteConfirmTarget({
+      type: 'account',
+      id: acc.id,
+      name: acc.name,
+    });
+  };
+
+  const handleDeleteBudgetLegacy = async (b: WalletBudget) => {
     if (!confirm(`¿Eliminar el presupuesto "${b.name}"?`)) return;
     if (currentUser) {
       const uid = currentUser.uid;
@@ -3208,31 +3387,39 @@ export default function App() {
                       y1="210"
                       y2="210"
                     />
-                    {DAILY_BARS_OCT.map((bar, idx) => {
-                      const xBase = 12 + idx * 24;
-                      return (
-                        <g key={bar.day}>
-                          {bar.inc > 0 && (
-                            <rect
-                              x={xBase}
-                              y={210 - bar.inc}
-                              width="7"
-                              height={bar.inc}
-                              rx="2"
-                              fill="url(#incGrad)"
-                            />
-                          )}
-                          <rect
-                            x={bar.inc > 0 ? xBase + 9 : xBase}
-                            y={210 - bar.exp}
-                            width="7"
-                            height={bar.exp}
-                            rx="2"
-                            fill="url(#expGrad)"
-                          />
-                        </g>
+                    {dailyCashFlowData.length > 0 && (() => {
+                      const maxDailyValue = Math.max(
+                        1,
+                        ...dailyCashFlowData.flatMap((bar) => [bar.inc, bar.exp])
                       );
-                    })}
+                      return dailyCashFlowData.map((bar, idx) => {
+                        const xBase = 12 + idx * 18;
+                        const incHeight = (bar.inc / maxDailyValue) * 150;
+                        const expHeight = (bar.exp / maxDailyValue) * 150;
+                        return (
+                          <g key={bar.date || `${bar.dayLabel}-${idx}`}>
+                            {bar.inc > 0 && (
+                              <rect
+                                x={xBase}
+                                y={210 - incHeight}
+                                width="7"
+                                height={incHeight}
+                                rx="2"
+                                fill="url(#incGrad)"
+                              />
+                            )}
+                            <rect
+                              x={bar.inc > 0 ? xBase + 9 : xBase}
+                              y={210 - expHeight}
+                              width="7"
+                              height={expHeight}
+                              rx="2"
+                              fill="url(#expGrad)"
+                            />
+                          </g>
+                        );
+                      });
+                    })()}
                   </svg>
                 </div>
 
@@ -4113,6 +4300,42 @@ export default function App() {
         )}
 
       </main>
+
+      {deleteConfirmTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md bg-[#1E1E1E] border border-white/10 rounded-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">Confirmar eliminación</h3>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmTarget(null)}
+                className="p-1 text-[#A0A0A0] hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-[#BACBB9]">
+              ¿Deseas eliminar <span className="font-semibold text-white">{deleteConfirmTarget.name}</span>?
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmTarget(null)}
+                className="px-4 py-2 rounded-xl bg-[#252525] text-xs font-semibold text-[#BACBB9]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteTarget}
+                className="px-5 py-2 rounded-xl bg-[#A00118] text-white text-xs font-bold"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="w-full bg-[#0E0E0E] border-t border-white/5 py-5 mt-12">

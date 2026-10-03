@@ -37,7 +37,7 @@ service cloud.firestore {
     }
 
     function userExists(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+      return exists(/databases/$(database)/documents/users/$(userId));
     }
 
     // 3. Entity Validation Blueprints

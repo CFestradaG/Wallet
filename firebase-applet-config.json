@@ -1,12 +1,12 @@
 {
-  "projectId": "gen-lang-client-0359879142",
-  "appId": "1:848123961032:web:d961181d360f83f1888ffd",
-  "apiKey": "AIzaSyCVYKRxSQxsy2He5U7MSUE0PIDyCabtmNM",
-  "authDomain": "gen-lang-client-0359879142.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-34c6c96d-75e1-43a9-8168-80f95958622c",
-  "storageBucket": "gen-lang-client-0359879142.firebasestorage.app",
-  "messagingSenderId": "848123961032",
+  "projectId": "fintrack-gt",
+  "appId": "1:862971153777:web:fc1ecc508e7da70dabbad0",
+  "apiKey": "AIzaSyAiFV7SkWlVeVZ2xGwPMpc8oq6MfRYbNMM",
+  "authDomain": "fintrack-gt.firebaseapp.com",
+  "firestoreDatabaseId": "",
+  "storageBucket": "fintrack-gt.firebasestorage.app",
+  "messagingSenderId": "862971153777",
   "measurementId": "",
-  "oAuthClientId": "848123961032-ja31k5bb84vll2meh3srqvekpsfjqii8.apps.googleusercontent.com",
+  "oAuthClientId": "862971153777-hr5aonrddjer8k42mrm492vckl530gsp.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }
