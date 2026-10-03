@@ -23,20 +23,22 @@ class TransactionEntity {
   final String userId;
   final String accountId;
   final String accountName;
-  final String? toAccountId;   // Cuenta destino cuando type == TransactionType.transfer
+  final String?
+  toAccountId; // Cuenta destino cuando type == TransactionType.transfer
   final String? toAccountName; // Nombre de la cuenta destino en transferencias
   final String categoryId;
   final String categoryName;
   final String categoryIcon;
   final String categoryColor;
-  final String? subcategory;   // Subcategoría desplegable seleccionada
+  final String? subcategory; // Subcategoría desplegable seleccionada
   final TransactionType type;
   final double amount;
   final String currency;
   final String note;
   final DateTime date;
   final String yearMonth; // Identificador de período o año-mes
-  final String periodId;  // ID del resumen financiero dinámico (ej. 'period_2026_11')
+  final String
+  periodId; // ID del resumen financiero dinámico (ej. 'period_2026_11')
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -66,6 +68,7 @@ class TransactionEntity {
   bool get isIncome => type == TransactionType.income;
   bool get isExpense => type == TransactionType.expense;
   bool get isTransfer => type == TransactionType.transfer;
+  double get signedAmount => isIncome ? amount.abs() : -amount.abs();
 
   /// Impacto sobre la cuenta de origen (`accountId`):
   /// - Ingreso: +amount
@@ -109,7 +112,8 @@ class TransactionModel extends TransactionEntity {
       throw StateError('El documento de transacción ${doc.id} está vacío');
     }
 
-    final parsedDate = DateTime.tryParse((data['dateIso'] as String?) ?? '') ??
+    final parsedDate =
+        DateTime.tryParse((data['dateIso'] as String?) ?? '') ??
         (data['date'] is Timestamp
             ? (data['date'] as Timestamp).toDate()
             : DateTime.now());
@@ -119,7 +123,8 @@ class TransactionModel extends TransactionEntity {
     final fallbackYm =
         '${parsedDate.year}_${parsedDate.month.toString().padLeft(2, '0')}';
     final ym = (data['yearMonth'] as String?) ?? fallbackYm;
-    final pid = (data['periodId'] as String?) ??
+    final pid =
+        (data['periodId'] as String?) ??
         (ym.startsWith('period_') ? ym : 'period_${ym.replaceAll('-', '_')}');
 
     return TransactionModel(
@@ -155,8 +160,9 @@ class TransactionModel extends TransactionEntity {
     return {
       'userId': userId,
       'accountId': accountId,
-      'accountName':
-          accountName.length > 80 ? accountName.substring(0, 80) : accountName,
+      'accountName': accountName.length > 80
+          ? accountName.substring(0, 80)
+          : accountName,
       if (toAccountId != null && toAccountId!.isNotEmpty)
         'toAccountId': toAccountId,
       if (toAccountName != null && toAccountName!.isNotEmpty)

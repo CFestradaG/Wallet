@@ -96,7 +96,9 @@ class ObsidianFlowTheme {
       inversePrimary: Color(0xFF006D35),
     );
 
-    final baseTextTheme = GoogleFonts.interTextTheme(ThemeData.dark().textTheme);
+    final baseTextTheme = GoogleFonts.interTextTheme(
+      ThemeData.dark().textTheme,
+    );
 
     return ThemeData(
       useMaterial3: true,
@@ -195,16 +197,13 @@ class ObsidianFlowTheme {
         scrolledUnderElevation: 0,
         centerTitle: false,
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: ObsidianFlowColors.elevation1,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: Colors.white.withOpacity(0.05),
-            width: 1,
-          ),
+          side: BorderSide(color: Colors.white.withOpacity(0.05), width: 1),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -225,7 +224,10 @@ class ObsidianFlowTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: ObsidianFlowColors.elevation2,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         hintStyle: const TextStyle(color: ObsidianFlowColors.textMuted),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -266,9 +268,7 @@ class ObsidianFlowTheme {
         backgroundColor: ObsidianFlowColors.primaryContainer,
         foregroundColor: ObsidianFlowColors.canvasBase,
         elevation: 6,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }

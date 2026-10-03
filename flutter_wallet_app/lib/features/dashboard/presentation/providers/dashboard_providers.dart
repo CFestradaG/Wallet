@@ -8,6 +8,8 @@ import '../../../../core/constants/firestore_paths.dart';
 import '../../../../core/utils/financial_period_helper.dart';
 import '../../../accounts/data/models/account_model.dart';
 import '../../../accounts/data/repositories/account_repository.dart';
+import '../../../budgets/data/models/budget_model.dart';
+import '../../../categories/data/models/category_model.dart';
 import '../../../settings/data/models/user_settings_model.dart';
 import '../../../transactions/data/models/transaction_model.dart';
 import '../../../transactions/data/repositories/transaction_repository.dart';
@@ -64,8 +66,8 @@ class UserSettingsStreamNotifier extends StreamNotifier<UserSettingsModel> {
 
 final userSettingsProvider =
     StreamNotifierProvider<UserSettingsStreamNotifier, UserSettingsModel>(
-  UserSettingsStreamNotifier.new,
-);
+      UserSettingsStreamNotifier.new,
+    );
 
 /// Provider que expone `FinancialPeriodHelper` sincronizado con la configuración del usuario
 final financialPeriodHelperProvider = Provider<FinancialPeriodHelper>((ref) {
@@ -117,8 +119,8 @@ class PeriodFilterNotifier extends Notifier<PeriodFilterState> {
 
 final periodFilterProvider =
     NotifierProvider<PeriodFilterNotifier, PeriodFilterState>(
-  PeriodFilterNotifier.new,
-);
+      PeriodFilterNotifier.new,
+    );
 
 /// 4. Providers de Repositorios (Clean Architecture Data Layer)
 final accountRepositoryProvider = Provider<IAccountRepository>((ref) {
@@ -131,13 +133,41 @@ final transactionRepositoryProvider = Provider<ITransactionRepository>((ref) {
   return TransactionRepository(firestore);
 });
 
+final userCategoriesProvider = StreamProvider<List<CategoryModel>>((ref) {
+  final userId = ref.watch(currentUserIdProvider).valueOrNull;
+  if (userId == null || userId.isEmpty) {
+    return Stream.value(const <CategoryModel>[]);
+  }
+  return ref
+      .watch(firebaseFirestoreProvider)
+      .collection(FirestorePaths.categories(userId))
+      .where('userId', isEqualTo: userId)
+      .snapshots()
+      .map(
+        (snapshot) => snapshot.docs.map(CategoryModel.fromFirestore).toList(),
+      );
+});
+
+final userBudgetsProvider = StreamProvider<List<BudgetModel>>((ref) {
+  final userId = ref.watch(currentUserIdProvider).valueOrNull;
+  if (userId == null || userId.isEmpty) {
+    return Stream.value(const <BudgetModel>[]);
+  }
+  return ref
+      .watch(firebaseFirestoreProvider)
+      .collection(FirestorePaths.budgets(userId))
+      .where('userId', isEqualTo: userId)
+      .snapshots()
+      .map((snapshot) => snapshot.docs.map(BudgetModel.fromFirestore).toList());
+});
+
 /// 5. Estado Consolidado del Dashboard con Período Financiero Dinámico
 class DashboardWalletState {
   final List<AccountModel> accounts;
   final List<TransactionModel> recentTransactions;
-  final String activePeriodName;    // Ej. "2026-11"
-  final String activeFirestoreId;   // Ej. "period_2026_11"
-  final DateTimeRange activeRange;  // Ej. 27 Oct 00:00:00 - 26 Nov 23:59:59
+  final String activePeriodName; // Ej. "2026-11"
+  final String activeFirestoreId; // Ej. "period_2026_11"
+  final DateTimeRange activeRange; // Ej. 27 Oct 00:00:00 - 26 Nov 23:59:59
   final String currentSubPeriodLabel;
   final PeriodFilterMode filterMode;
 
@@ -190,8 +220,8 @@ class AccountsStreamNotifier extends StreamNotifier<List<AccountModel>> {
 
 final userAccountsNotifierProvider =
     StreamNotifierProvider<AccountsStreamNotifier, List<AccountModel>>(
-  AccountsStreamNotifier.new,
-);
+      AccountsStreamNotifier.new,
+    );
 
 /// 7. NotifierProvider Reactivo para Transacciones con Operaciones Atómicas
 class TransactionsStreamNotifier
@@ -203,10 +233,7 @@ class TransactionsStreamNotifier
       return const Stream.empty();
     }
     final repository = ref.watch(transactionRepositoryProvider);
-    return repository.watchUserTransactions(
-      userId: userId,
-      limit: 100,
-    );
+    return repository.watchUserTransactions(userId: userId, limit: 100);
   }
 
   Future<void> saveTransaction(TransactionModel transaction) async {
@@ -239,8 +266,8 @@ class TransactionsStreamNotifier
 
 final userTransactionsNotifierProvider =
     StreamNotifierProvider<TransactionsStreamNotifier, List<TransactionModel>>(
-  TransactionsStreamNotifier.new,
-);
+      TransactionsStreamNotifier.new,
+    );
 
 /// 8. NotifierProvider Principal del Dashboard que filtra por el Ciclo Financiero Dinámico
 class DashboardNotifier extends Notifier<AsyncValue<DashboardWalletState>> {
@@ -285,8 +312,9 @@ class DashboardNotifier extends Notifier<AsyncValue<DashboardWalletState>> {
         accounts: accountsAsync.value ?? const [],
         recentTransactions: filteredTx,
         activePeriodName: helper.getPeriodName(filterState.referenceDate),
-        activeFirestoreId:
-            helper.getFirestorePeriodId(filterState.referenceDate),
+        activeFirestoreId: helper.getFirestorePeriodId(
+          filterState.referenceDate,
+        ),
         activeRange: activeRange,
         currentSubPeriodLabel: helper.getSubPeriod(filterState.referenceDate),
         filterMode: filterState.mode,
@@ -297,5 +325,5 @@ class DashboardNotifier extends Notifier<AsyncValue<DashboardWalletState>> {
 
 final dashboardNotifierProvider =
     NotifierProvider<DashboardNotifier, AsyncValue<DashboardWalletState>>(
-  DashboardNotifier.new,
-);
+      DashboardNotifier.new,
+    );

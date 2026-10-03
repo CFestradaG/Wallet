@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/router/app_router.dart';
 import '../../../../core/theme/theme.dart';
+import '../../../../core/utils/financial_period_helper.dart';
 import '../../../accounts/data/models/account_model.dart';
 import '../../../transactions/data/models/transaction_model.dart';
 import '../providers/dashboard_providers.dart';
@@ -134,13 +135,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ),
       // 7. Floating Action Button (+) idéntico a la captura
       floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push('${AppRoutes.newTransaction}?type=expense'),
+        onPressed: () =>
+            context.push('${AppRoutes.newTransaction}?type=expense'),
         backgroundColor: const Color(0xFF00BFA5),
         foregroundColor: Colors.black,
         elevation: 8,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: const Icon(Icons.add, size: 30, weight: 700),
       ),
     );
@@ -244,7 +244,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           Text(
             title,
             style: TextStyle(
-              color: isSelected ? Colors.white : ObsidianFlowColors.textSecondary,
+              color: isSelected
+                  ? Colors.white
+                  : ObsidianFlowColors.textSecondary,
               fontSize: 15,
               fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
             ),
@@ -266,8 +268,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   /// 1. Tarjeta de Saldo Total ("PATRIMONIO NETO TOTAL")
   Widget _buildNetWorthHeroCard(DashboardWalletState state) {
-    final displayBalance =
-        state.accounts.isEmpty ? 12450.00 : state.netWorthTotal;
+    final displayBalance = state.accounts.isEmpty
+        ? 12450.00
+        : state.netWorthTotal;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -275,10 +278,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF1A2420),
-            Color(0xFF161918),
-          ],
+          colors: [Color(0xFF1A2420), Color(0xFF161918)],
         ),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
@@ -301,7 +301,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: ObsidianFlowColors.primaryContainer.withOpacity(0.14),
                   borderRadius: BorderRadius.circular(999),
@@ -361,7 +364,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 child: CustomPaint(
                   painter: _SparklinePainter(
                     color: ObsidianFlowColors.primaryContainer,
-                    hasMovements: state.recentTransactions.isNotEmpty && state.netWorthTotal != 0,
+                    hasMovements:
+                        state.recentTransactions.isNotEmpty &&
+                        state.netWorthTotal != 0,
                   ),
                 ),
               ),
@@ -439,14 +444,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           isCash
                               ? Icons.payments_outlined
                               : acc.isCreditCard
-                                  ? Icons.credit_card_rounded
-                                  : Icons.account_balance_rounded,
+                              ? Icons.credit_card_rounded
+                              : Icons.account_balance_rounded,
                           size: 18,
                           color: isCash
                               ? Colors.white
                               : acc.isCreditCard
-                                  ? ObsidianFlowColors.outflowCrimson
-                                  : const Color(0xFF00B4D8),
+                              ? ObsidianFlowColors.outflowCrimson
+                              : const Color(0xFF00B4D8),
                         ),
                         const SizedBox(width: 6),
                         Text(
@@ -476,9 +481,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      acc.isCreditCard
-                          ? 'TARJETA CRÉDITO'
-                          : 'SALDO DISPONIBLE',
+                      acc.isCreditCard ? 'TARJETA CRÉDITO' : 'SALDO DISPONIBLE',
                       style: TextStyle(
                         color: isCash
                             ? Colors.white.withOpacity(0.8)
@@ -497,8 +500,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         color: isCash
                             ? Colors.white
                             : isNegative
-                                ? ObsidianFlowColors.outflowCrimson
-                                : Colors.white,
+                            ? ObsidianFlowColors.outflowCrimson
+                            : Colors.white,
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                         fontFeatures: const [FontFeature.tabularFigures()],
@@ -799,7 +802,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 child: hasExpenses
                     ? Column(
                         children: [
-                          for (int i = 0; i < sortedExpenses.take(3).length; i++) ...[
+                          for (
+                            int i = 0;
+                            i < sortedExpenses.take(3).length;
+                            i++
+                          ) ...[
                             if (i > 0) const SizedBox(height: 10),
                             _buildLegendRow(
                               color: palette[i % palette.length],
@@ -1016,9 +1023,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             decoration: BoxDecoration(
                               color: isIncome
                                   ? ObsidianFlowColors.primaryContainer
-                                      .withOpacity(0.12)
+                                        .withOpacity(0.12)
                                   : ObsidianFlowColors.outflowCrimson
-                                      .withOpacity(0.12),
+                                        .withOpacity(0.12),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
@@ -1052,7 +1059,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                       height: 6,
                                       decoration: BoxDecoration(
                                         color: isIncome
-                                            ? ObsidianFlowColors.primaryContainer
+                                            ? ObsidianFlowColors
+                                                  .primaryContainer
                                             : const Color(0xFF00B4D8),
                                         shape: BoxShape.circle,
                                       ),
@@ -1064,7 +1072,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
-                                          color: ObsidianFlowColors.textSecondary,
+                                          color:
+                                              ObsidianFlowColors.textSecondary,
                                           fontSize: 12,
                                         ),
                                       ),
@@ -1209,7 +1218,9 @@ class _ExpenseDonutPainter extends CustomPainter {
         ..color = _palette[colorIdx % _palette.length]
         ..style = PaintingStyle.stroke
         ..strokeWidth = 11
-        ..strokeCap = sortedEntries.length == 1 ? StrokeCap.round : StrokeCap.butt;
+        ..strokeCap = sortedEntries.length == 1
+            ? StrokeCap.round
+            : StrokeCap.butt;
 
       final sweepAngle = sweepRatio * 2 * math.pi;
       canvas.drawArc(rect, startAngle, sweepAngle, false, paint);

@@ -54,7 +54,7 @@ class FinancialPeriodSelectorBar extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: StitchColors.surfaceContainerLow,
+        color: ObsidianFlowColors.surfaceContainerLow,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
@@ -66,7 +66,7 @@ class FinancialPeriodSelectorBar extends ConsumerWidget {
               const Icon(
                 Icons.calendar_month_rounded,
                 size: 16,
-                color: StitchColors.primaryContainer,
+                color: ObsidianFlowColors.primaryContainer,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -75,7 +75,7 @@ class FinancialPeriodSelectorBar extends ConsumerWidget {
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: StitchColors.onSurfaceVariant,
+                    color: ObsidianFlowColors.onSurfaceVariant,
                     letterSpacing: 0.4,
                   ),
                 ),
@@ -83,7 +83,9 @@ class FinancialPeriodSelectorBar extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: StitchColors.secondaryContainer.withValues(alpha: 0.15),
+                  color: ObsidianFlowColors.secondaryContainer.withValues(
+                    alpha: 0.15,
+                  ),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -91,7 +93,7 @@ class FinancialPeriodSelectorBar extends ConsumerWidget {
                   style: const TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    color: StitchColors.secondary,
+                    color: ObsidianFlowColors.secondary,
                   ),
                 ),
               ),
@@ -131,22 +133,23 @@ class FinancialPeriodSelectorBar extends ConsumerWidget {
                             .setFilterMode(opt.mode);
                       }
                     },
-                    selectedColor:
-                        StitchColors.primaryContainer.withValues(alpha: 0.22),
-                    backgroundColor: StitchColors.surfaceContainerHigh,
+                    selectedColor: ObsidianFlowColors.primaryContainer
+                        .withValues(alpha: 0.22),
+                    backgroundColor: ObsidianFlowColors.surfaceContainerHigh,
                     labelStyle: TextStyle(
                       fontSize: 11,
-                      fontWeight:
-                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : FontWeight.w500,
                       color: isSelected
-                          ? StitchColors.primary
-                          : StitchColors.onSurfaceVariant,
+                          ? ObsidianFlowColors.primary
+                          : ObsidianFlowColors.onSurfaceVariant,
                     ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                       side: BorderSide(
                         color: isSelected
-                            ? StitchColors.primaryContainer
+                            ? ObsidianFlowColors.primaryContainer
                             : Colors.transparent,
                       ),
                     ),

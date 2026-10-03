@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../../accounts/data/models/account_model.dart';
 import '../../../dashboard/presentation/providers/dashboard_providers.dart';
+import '../../../categories/data/models/category_model.dart';
 import '../../data/models/transaction_model.dart';
 
 /// Modelo ligero para las Categorías del carrusel horizontal (Imagen 5 / Imagen 6)
@@ -32,13 +33,19 @@ class TransactionCategoryOption {
 const List<TransactionCategoryOption> kDefaultCategories = [
   // --- GASTOS ---
   TransactionCategoryOption(
-    id: 'cat_restaurante',
-    name: 'Comida',
+    id: 'cat_comida',
+    name: 'Comida y Bebida',
     icon: Icons.restaurant_rounded,
     iconName: 'utensils',
     colorHex: '#00ACC1',
     type: TransactionType.expense,
-    subcategories: ['Almuerzo Ejecutivo', 'Cena', 'Comida Rápida', 'Cafetería', 'Delivery'],
+    subcategories: [
+      'Almuerzo Ejecutivo',
+      'Cena',
+      'Comida Rápida',
+      'Cafetería',
+      'Delivery',
+    ],
   ),
   TransactionCategoryOption(
     id: 'cat_mercado',
@@ -47,71 +54,115 @@ const List<TransactionCategoryOption> kDefaultCategories = [
     iconName: 'shopping_cart',
     colorHex: '#FFB300',
     type: TransactionType.expense,
-    subcategories: ['Abarrotes y Despensa', 'Frutas y Verduras', 'Carnes y Lácteos', 'Limpieza del Hogar', 'Bebidas'],
+    subcategories: [
+      'Abarrotes y Despensa',
+      'Frutas y Verduras',
+      'Carnes y Lácteos',
+      'Limpieza del Hogar',
+      'Bebidas',
+    ],
   ),
   TransactionCategoryOption(
-    id: 'cat_gasolina',
-    name: 'Transporte',
+    id: 'cat_transporte',
+    name: 'Transporte y Gasolina',
     icon: Icons.local_gas_station_outlined,
     iconName: 'fuel',
     colorHex: '#FF5252',
     type: TransactionType.expense,
-    subcategories: ['Gasolina / Diésel', 'Uber / Taxi', 'Peajes', 'Taller / Mantenimiento', 'Parqueos'],
+    subcategories: [
+      'Gasolina / Diésel',
+      'Uber / Taxi',
+      'Peajes',
+      'Taller / Mantenimiento',
+      'Parqueos',
+    ],
   ),
   TransactionCategoryOption(
     id: 'cat_servicios',
-    name: 'Servicios',
+    name: 'Vivienda y Servicios',
     icon: Icons.bolt_rounded,
     iconName: 'wifi',
     colorHex: '#00DCF5',
     type: TransactionType.expense,
-    subcategories: ['Alquiler / Hipoteca', 'Electricidad', 'Internet / Fibra', 'Agua Potable', 'Gas Propano'],
+    subcategories: [
+      'Alquiler / Hipoteca',
+      'Electricidad',
+      'Internet / Fibra',
+      'Agua Potable',
+      'Gas Propano',
+    ],
   ),
   TransactionCategoryOption(
     id: 'cat_ocio',
-    name: 'Entretenimiento',
+    name: 'Entretenimiento y Ocio',
     icon: Icons.movie_creation_outlined,
     iconName: 'film',
     colorHex: '#9C27B0',
     type: TransactionType.expense,
-    subcategories: ['Streaming', 'Cine y Eventos', 'Salidas y Fiestas', 'Videojuegos y Hobbies'],
+    subcategories: [
+      'Streaming',
+      'Cine y Eventos',
+      'Salidas y Fiestas',
+      'Videojuegos y Hobbies',
+    ],
   ),
   TransactionCategoryOption(
     id: 'cat_salud',
-    name: 'Salud',
+    name: 'Salud y Farmacia',
     icon: Icons.medical_services_outlined,
     iconName: 'heart_pulse',
     colorHex: '#FF5252',
     type: TransactionType.expense,
-    subcategories: ['Farmacia y Medicinas', 'Consultas Médicas', 'Laboratorios', 'Cuidado Personal'],
+    subcategories: [
+      'Farmacia y Medicinas',
+      'Consultas Médicas',
+      'Laboratorios',
+      'Cuidado Personal',
+    ],
   ),
   // --- INGRESOS ---
   TransactionCategoryOption(
     id: 'cat_salario',
-    name: 'Salario',
+    name: 'Salario y Nómina',
     icon: Icons.account_balance_wallet_outlined,
     iconName: 'briefcase',
     colorHex: '#00E676',
     type: TransactionType.income,
-    subcategories: ['Sueldo Quincenal', 'Sueldo Fin de Mes', 'Bono 14', 'Aguinaldo', 'Horas Extras'],
+    subcategories: [
+      'Sueldo Quincenal',
+      'Sueldo Fin de Mes',
+      'Bono 14',
+      'Aguinaldo',
+      'Horas Extras',
+    ],
   ),
   TransactionCategoryOption(
     id: 'cat_negocio',
-    name: 'Negocio',
+    name: 'Negocio y Ventas',
     icon: Icons.storefront_outlined,
     iconName: 'shopping_cart',
     colorHex: '#00DCF5',
     type: TransactionType.income,
-    subcategories: ['Venta de Productos', 'Servicios Prestados', 'Comisiones', 'Cobro de Facturas'],
+    subcategories: [
+      'Venta de Productos',
+      'Servicios Prestados',
+      'Comisiones',
+      'Cobro de Facturas',
+    ],
   ),
   TransactionCategoryOption(
     id: 'cat_inversiones',
-    name: 'Inversiones',
+    name: 'Inversiones y Rendimientos',
     icon: Icons.trending_up_rounded,
     iconName: 'trending_up',
     colorHex: '#FFB300',
     type: TransactionType.income,
-    subcategories: ['Dividendos', 'Intereses Bancarios', 'Cripto / Acciones', 'Rentas Cobradas'],
+    subcategories: [
+      'Dividendos',
+      'Intereses Bancarios',
+      'Cripto / Acciones',
+      'Rentas Cobradas',
+    ],
   ),
   TransactionCategoryOption(
     id: 'cat_otros_ingresos',
@@ -120,7 +171,12 @@ const List<TransactionCategoryOption> kDefaultCategories = [
     iconName: 'gift',
     colorHex: '#AB47BC',
     type: TransactionType.income,
-    subcategories: ['Regalos y Donaciones', 'Reembolsos', 'Premios', 'Préstamos'],
+    subcategories: [
+      'Regalos y Donaciones',
+      'Reembolsos',
+      'Premios',
+      'Préstamos',
+    ],
   ),
 ];
 
@@ -138,10 +194,7 @@ const List<TransactionCategoryOption> kDefaultCategories = [
 class AddTransactionScreen extends ConsumerStatefulWidget {
   final String initialType;
 
-  const AddTransactionScreen({
-    super.key,
-    this.initialType = 'expense',
-  });
+  const AddTransactionScreen({super.key, this.initialType = 'expense'});
 
   @override
   ConsumerState<AddTransactionScreen> createState() =>
@@ -150,11 +203,14 @@ class AddTransactionScreen extends ConsumerStatefulWidget {
 
 class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
   late TransactionType _selectedType;
-  String _expression = '150.00';
+  String _expression = '0.00';
   bool _isDefaultValue = true;
 
   String? _selectedAccountId;
+  String? _selectedToAccountId;
   late TransactionCategoryOption _selectedCategory;
+  List<TransactionCategoryOption> _availableCategoryOptions =
+      kDefaultCategories;
   bool _isCategoryChosen = false;
   String? _selectedSubcategory;
   DateTime _selectedDateTime = DateTime.now();
@@ -186,8 +242,10 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
     if (safeExpr.isEmpty) return 0.0;
 
     final RegExp tokenRegex = RegExp(r'(\d+\.?\d*|[+\-*/])');
-    final tokens =
-        tokenRegex.allMatches(safeExpr).map((m) => m.group(0)!).toList();
+    final tokens = tokenRegex
+        .allMatches(safeExpr)
+        .map((m) => m.group(0)!)
+        .toList();
     if (tokens.isEmpty) return 0.0;
 
     double result = double.tryParse(tokens.first) ?? 0.0;
@@ -235,8 +293,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
       if (['+', '-', '*', '/'].contains(key)) {
         _isDefaultValue = false;
         if (['+', '-', '*', '/'].any((op) => _expression.endsWith(op))) {
-          _expression =
-              _expression.substring(0, _expression.length - 1) + key;
+          _expression = _expression.substring(0, _expression.length - 1) + key;
         } else {
           _expression += key;
         }
@@ -296,7 +353,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
               userId: userId,
               name: 'Efectivo',
               type: AccountType.cash,
-              currentBalance: 4990.90,
+              currentBalance: 0,
               currency: 'GTQ',
               colorHex: '#00ACC1',
               iconName: 'payments',
@@ -305,6 +362,27 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
               updatedAt: DateTime.now(),
             ),
     );
+
+    AccountModel? destinationAccount;
+    if (_selectedType == TransactionType.transfer) {
+      for (final account in accounts) {
+        if (account.id == _selectedToAccountId &&
+            account.id != selectedAccount.id) {
+          destinationAccount = account;
+          break;
+        }
+      }
+      if (destinationAccount == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Selecciona una cuenta destino distinta a la de origen.',
+            ),
+          ),
+        );
+        return;
+      }
+    }
 
     setState(() => _isSubmitting = true);
 
@@ -318,6 +396,8 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
         userId: userId,
         accountId: selectedAccount.id,
         accountName: selectedAccount.name,
+        toAccountId: destinationAccount?.id,
+        toAccountName: destinationAccount?.name,
         categoryId: _selectedCategory.id,
         categoryName: _selectedCategory.name,
         categoryIcon: _selectedCategory.iconName,
@@ -364,9 +444,21 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
   Widget build(BuildContext context) {
     final accountsAsync = ref.watch(userAccountsNotifierProvider);
     final accounts = accountsAsync.valueOrNull ?? const [];
+    final categories = ref.watch(userCategoriesProvider).valueOrNull;
+    _availableCategoryOptions = categories == null || categories.isEmpty
+        ? kDefaultCategories
+        : categories.map(_toCategoryOption).toList();
 
     if (_selectedAccountId == null && accounts.isNotEmpty) {
       _selectedAccountId = accounts.first.id;
+    }
+    if (_selectedType == TransactionType.transfer &&
+        accounts.length > 1 &&
+        (_selectedToAccountId == null ||
+            _selectedToAccountId == _selectedAccountId)) {
+      _selectedToAccountId = accounts
+          .firstWhere((account) => account.id != _selectedAccountId)
+          .id;
     }
 
     final AccountModel? activeAccount = accounts.isEmpty
@@ -393,11 +485,9 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
               child: Column(
                 children: [
                   _buildCategoryHorizontalSlider(),
-                  _buildDateAndNoteSection(context),
+                  _buildDateAndNoteSection(context, accounts),
                   // 4. TECLADO NUMÉRICO PERSONALIZADO 4x4
-                  Expanded(
-                    child: _buildCustomCalculatorKeypad(),
-                  ),
+                  Expanded(child: _buildCustomCalculatorKeypad()),
                 ],
               ),
             ),
@@ -407,6 +497,29 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  TransactionCategoryOption _toCategoryOption(CategoryModel category) {
+    final icon = switch (category.iconName) {
+      'shopping_cart' => Icons.shopping_cart_outlined,
+      'fuel' => Icons.local_gas_station_outlined,
+      'wifi' => Icons.wifi_rounded,
+      'film' => Icons.movie_creation_outlined,
+      'heart_pulse' => Icons.medical_services_outlined,
+      'briefcase' => Icons.work_outline_rounded,
+      _ => Icons.restaurant_rounded,
+    };
+    return TransactionCategoryOption(
+      id: category.id,
+      name: category.name,
+      icon: icon,
+      iconName: category.iconName,
+      colorHex: category.colorHex,
+      type: category.isIncome
+          ? TransactionType.income
+          : TransactionType.expense,
+      subcategories: category.subcategories,
     );
   }
 
@@ -430,7 +543,11 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
               children: [
                 IconButton(
                   onPressed: () => context.pop(),
-                  icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
                 ),
                 const Text(
                   'NUEVA TRANSACCIÓN',
@@ -445,7 +562,11 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                   onPressed: _isSubmitting
                       ? null
                       : () => _handleSaveTransaction(accounts),
-                  icon: const Icon(Icons.check_rounded, color: Colors.white, size: 28),
+                  icon: const Icon(
+                    Icons.check_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
                 ),
               ],
             ),
@@ -460,14 +581,8 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
             ),
             child: Row(
               children: [
-                _buildTypeTab(
-                  label: 'INGRESOS',
-                  type: TransactionType.income,
-                ),
-                _buildTypeTab(
-                  label: 'GASTO',
-                  type: TransactionType.expense,
-                ),
+                _buildTypeTab(label: 'INGRESOS', type: TransactionType.income),
+                _buildTypeTab(label: 'GASTO', type: TransactionType.expense),
                 _buildTypeTab(
                   label: 'TRANSFERENCIA',
                   type: TransactionType.transfer,
@@ -493,8 +608,8 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                           _selectedType == TransactionType.income
                               ? '+'
                               : _selectedType == TransactionType.expense
-                                  ? '-'
-                                  : '⇄',
+                              ? '-'
+                              : '⇄',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 36,
@@ -637,7 +752,10 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
               ),
               // Botón flotante blanco en el borde derecho "<"
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 12,
+                ),
                 decoration: const BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.horizontal(
@@ -657,17 +775,16 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
     );
   }
 
-  Widget _buildTypeTab({
-    required String label,
-    required TransactionType type,
-  }) {
+  Widget _buildTypeTab({required String label, required TransactionType type}) {
     final bool isSelected = _selectedType == type;
     return Expanded(
       child: InkWell(
         onTap: () => setState(() {
           _selectedType = type;
           _isCategoryChosen = false;
-          final available = kDefaultCategories.where((c) => c.type == type).toList();
+          final available = _availableCategoryOptions
+              .where((c) => c.type == type)
+              .toList();
           if (available.isNotEmpty) {
             _selectedCategory = available.first;
             _selectedSubcategory = available.first.subcategories.isNotEmpty
@@ -739,8 +856,9 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
 
   /// Selector de Categoría y Subcategorías Hijas (Flujo Google Stitch)
   Widget _buildCategoryHorizontalSlider() {
-    final availableCategories =
-        kDefaultCategories.where((c) => c.type == _selectedType).toList();
+    final availableCategories = _availableCategoryOptions
+        .where((category) => category.type == _selectedType)
+        .toList();
 
     return Container(
       color: const Color(0xFF181818),
@@ -827,8 +945,9 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                                 ? const Color(0xFF4DD0E1)
                                 : const Color(0xFF9E9E9E),
                             fontSize: 11,
-                            fontWeight:
-                                isSelected ? FontWeight.w600 : FontWeight.w400,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.w400,
                           ),
                         ),
                       ],
@@ -858,8 +977,11 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                           color: const Color(0xFF00ACC1).withOpacity(0.2),
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(_selectedCategory.icon,
-                            color: const Color(0xFF00ACC1), size: 20),
+                        child: Icon(
+                          _selectedCategory.icon,
+                          color: const Color(0xFF00ACC1),
+                          size: 20,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Column(
@@ -891,7 +1013,9 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFF2F2F2F),
                         borderRadius: BorderRadius.circular(8),
@@ -899,8 +1023,11 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                       ),
                       child: const Row(
                         children: [
-                          Icon(Icons.arrow_back_rounded,
-                              size: 13, color: Color(0xFF26C6DA)),
+                          Icon(
+                            Icons.arrow_back_rounded,
+                            size: 13,
+                            color: Color(0xFF26C6DA),
+                          ),
                           SizedBox(width: 4),
                           Text(
                             'Regresar',
@@ -931,8 +1058,11 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.label_outline_rounded,
-                          size: 13, color: Color(0xFF00E676)),
+                      const Icon(
+                        Icons.label_outline_rounded,
+                        size: 13,
+                        color: Color(0xFF00E676),
+                      ),
                       const SizedBox(width: 5),
                       Text(
                         'SUBCATEGORÍAS HIJAS DE ${_selectedCategory.name.toUpperCase()}:',
@@ -955,7 +1085,8 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                           padding: const EdgeInsets.only(right: 6),
                           child: ChoiceChip(
                             label: const Text('General'),
-                            selected: _selectedSubcategory == null ||
+                            selected:
+                                _selectedSubcategory == null ||
                                 _selectedSubcategory!.isEmpty,
                             onSelected: (_) {
                               setState(() => _selectedSubcategory = null);
@@ -963,7 +1094,8 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                             selectedColor: const Color(0xFF00E676),
                             backgroundColor: const Color(0xFF2C2C2C),
                             labelStyle: TextStyle(
-                              color: (_selectedSubcategory == null ||
+                              color:
+                                  (_selectedSubcategory == null ||
                                       _selectedSubcategory!.isEmpty)
                                   ? const Color(0xFF003918)
                                   : Colors.white70,
@@ -971,7 +1103,9 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                               fontWeight: FontWeight.w600,
                             ),
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                           ),
                         ),
                         // Subcategorías de la categoría seleccionada
@@ -997,7 +1131,9 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                                     : FontWeight.w500,
                               ),
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
                             ),
                           );
                         }),
@@ -1014,7 +1150,10 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
   }
 
   /// Campos de Fecha ("Hoy, 10:30 AM") y Nota / Descripción
-  Widget _buildDateAndNoteSection(BuildContext context) {
+  Widget _buildDateAndNoteSection(
+    BuildContext context,
+    List<AccountModel> accounts,
+  ) {
     final formattedTime = DateFormat('h:mm a').format(_selectedDateTime);
 
     return Container(
@@ -1081,6 +1220,28 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
               ),
             ),
           ),
+          if (_selectedType == TransactionType.transfer) ...[
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              initialValue:
+                  accounts.any((account) => account.id == _selectedToAccountId)
+                  ? _selectedToAccountId
+                  : null,
+              decoration: const InputDecoration(labelText: 'Cuenta destino'),
+              dropdownColor: const Color(0xFF1C1C1C),
+              items: accounts
+                  .where((account) => account.id != _selectedAccountId)
+                  .map(
+                    (account) => DropdownMenuItem(
+                      value: account.id,
+                      child: Text(account.name),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (accountId) =>
+                  setState(() => _selectedToAccountId = accountId),
+            ),
+          ],
           const SizedBox(height: 8),
           // Campo de Nota / Descripción
           Container(
@@ -1168,10 +1329,10 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                               key == '/'
                                   ? '÷'
                                   : key == '*'
-                                      ? '×'
-                                      : key == '-'
-                                          ? '−'
-                                          : key,
+                                  ? '×'
+                                  : key == '-'
+                                  ? '−'
+                                  : key,
                               style: TextStyle(
                                 color: isOperator
                                     ? const Color(0xFF9E9E9E)
@@ -1205,8 +1366,9 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
         width: double.infinity,
         height: 48,
         child: ElevatedButton.icon(
-          onPressed:
-              _isSubmitting ? null : () => _handleSaveTransaction(accounts),
+          onPressed: _isSubmitting
+              ? null
+              : () => _handleSaveTransaction(accounts),
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF00ACC1),
             foregroundColor: Colors.white,
@@ -1226,10 +1388,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
               : const Icon(Icons.check_rounded, size: 20),
           label: Text(
             _isSubmitting ? 'Guardando...' : 'Guardar Transacción',
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
           ),
         ),
       ),
@@ -1278,7 +1437,15 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                     ),
                   ),
                   onTap: () {
-                    setState(() => _selectedAccountId = acc.id);
+                    setState(() {
+                      _selectedAccountId = acc.id;
+                      if (_selectedToAccountId == acc.id) {
+                        _selectedToAccountId = accounts
+                            .where((account) => account.id != acc.id)
+                            .firstOrNull
+                            ?.id;
+                      }
+                    });
                     Navigator.pop(context);
                   },
                 );
