@@ -182,7 +182,7 @@ export default function App() {
 
   // Dynamic Financial Period Filter State (Requerimiento 2)
   const [periodFilterMode, setPeriodFilterMode] =
-    useState<PeriodFilterMode>('fullPeriod');
+    useState<PeriodFilterMode | 'all'>('fullPeriod');
   // Reference date set to Oct 28, 2026 so with startDayOfMonth = 27 it demonstrates "2026-11 (27 Oct - 26 Nov)"
   const [referenceDate, setReferenceDate] = useState<Date>(
     () => new Date('2026-10-28T12:00:00.000Z')
@@ -676,11 +676,13 @@ export default function App() {
 
   const activeDateRange = useMemo(
     () =>
-      periodHelper.getRangeForFilterMode(
-        periodFilterMode,
-        referenceDate,
-        customRangeObj
-      ),
+      periodFilterMode === 'all'
+        ? { start: new Date(0), end: new Date(8640000000000000) }
+        : periodHelper.getRangeForFilterMode(
+            periodFilterMode,
+            referenceDate,
+            customRangeObj
+          ),
     [periodHelper, periodFilterMode, referenceDate, customRangeObj]
   );
 
@@ -777,17 +779,9 @@ export default function App() {
         Boolean(t.subcategory && t.subcategory.toLowerCase().includes(searchTerm.toLowerCase()));
 
       let matchesPeriod = true;
-      const txDate = new Date(t.dateIso);
-      if (filterPeriodPreset === 'cycle') {
-        matchesPeriod = periodHelper.isDateInRange(txDate, fullPeriodRange);
-      } else if (filterPeriodPreset === 'firstHalf') {
-        matchesPeriod = periodHelper.isDateInRange(txDate, firstHalfRange);
-      } else if (filterPeriodPreset === 'secondHalf') {
-        matchesPeriod = periodHelper.isDateInRange(txDate, secondHalfRange);
-      } else if (filterPeriodPreset === 'custom') {
-        matchesPeriod = periodHelper.isDateInRange(txDate, customRangeObj);
-      } else if (filterPeriodPreset === 'all') {
-        matchesPeriod = true;
+      if (periodFilterMode !== 'all') {
+        const txDate = new Date(t.dateIso);
+        matchesPeriod = periodHelper.isDateInRange(txDate, activeDateRange);
       }
 
       return matchesAcc && matchesCategory && matchesType && matchesSearch && matchesPeriod;
@@ -798,12 +792,9 @@ export default function App() {
     filterCategory,
     filterTxType,
     searchTerm,
-    filterPeriodPreset,
+    periodFilterMode,
+    activeDateRange,
     periodHelper,
-    fullPeriodRange,
-    firstHalfRange,
-    secondHalfRange,
-    customRangeObj,
   ]);
 
   // Dynamic Financial Metrics computed from the filtered transactions
@@ -1877,26 +1868,6 @@ export default function App() {
       id: acc.id,
       name: acc.name,
     });
-  };
-
-  const handleDeleteBudgetLegacy = async (b: WalletBudget) => {
-    if (!confirm(`¿Eliminar el presupuesto "${b.name}"?`)) return;
-    if (currentUser) {
-      const uid = currentUser.uid;
-      try {
-        await deleteDoc(doc(db, 'users', uid, 'budgets', b.id));
-        showToast(`Presupuesto "${b.name}" eliminado`);
-      } catch (err) {
-        handleFirestoreError(
-          err,
-          OperationType.DELETE,
-          `users/${uid}/budgets/${b.id}`
-        );
-      }
-    } else {
-      setBudgets((prev) => prev.filter((item) => item.id !== b.id));
-      showToast(`Presupuesto "${b.name}" eliminado`);
-    }
   };
 
   // Handler: Delete Transaction Atomically (Reverting currentBalance in involved accounts and summary)
@@ -3316,8 +3287,9 @@ export default function App() {
                       Flujo de Caja Diario
                     </h2>
                     <p className="text-xs text-[#BACBB9]">
-                      Entradas y salidas monetarias distribuidas en los 31 días
-                      de Octubre
+                      {periodFilterMode === 'all'
+                        ? 'Entradas y salidas monetarias de todo el historial'
+                        : `Entradas y salidas monetarias del período ${activePeriodName} (${FinancialPeriodHelper.formatShortRange(activeDateRange)})`}
                     </p>
                   </div>
                   <div className="flex items-center gap-4 text-xs">
@@ -3380,13 +3352,17 @@ export default function App() {
                       y1="210"
                       y2="210"
                     />
-                    {dailyCashFlowData.length > 0 && (() => {
+                    {dailyCashFlowData.length > 0 ? (() => {
+                      const totalDays = dailyCashFlowData.length;
                       const maxDailyValue = Math.max(
                         1,
                         ...dailyCashFlowData.flatMap((bar) => [bar.inc, bar.exp])
                       );
+                      const stepX = (620 - 40) / Math.max(1, totalDays);
+                      const barWidth = Math.min(9, Math.max(4, stepX * 0.35));
+
                       return dailyCashFlowData.map((bar, idx) => {
-                        const xBase = 12 + idx * 18;
+                        const xBase = 15 + idx * stepX;
                         const incHeight = (bar.inc / maxDailyValue) * 150;
                         const expHeight = (bar.exp / maxDailyValue) * 150;
                         return (
@@ -3395,46 +3371,80 @@ export default function App() {
                               <rect
                                 x={xBase}
                                 y={210 - incHeight}
-                                width="7"
+                                width={barWidth}
                                 height={incHeight}
                                 rx="2"
                                 fill="url(#incGrad)"
-                              />
+                              >
+                                <title>{`${bar.dayLabel}: Ingresos Q ${bar.inc.toFixed(2)}`}</title>
+                              </rect>
                             )}
                             <rect
-                              x={bar.inc > 0 ? xBase + 9 : xBase}
+                              x={bar.inc > 0 ? xBase + barWidth + 2 : xBase}
                               y={210 - expHeight}
-                              width="7"
+                              width={barWidth}
                               height={expHeight}
                               rx="2"
                               fill="url(#expGrad)"
-                            />
+                            >
+                              <title>{`${bar.dayLabel}: Gastos Q ${bar.exp.toFixed(2)}`}</title>
+                            </rect>
                           </g>
                         );
                       });
-                    })()}
+                    })() : (
+                      <text
+                        x="310"
+                        y="110"
+                        textAnchor="middle"
+                        fill="#BACBB9"
+                        fontSize="13"
+                        opacity="0.6"
+                      >
+                        Sin movimientos en este período
+                      </text>
+                    )}
                   </svg>
                 </div>
 
-                <div className="flex justify-between font-mono text-[10px] text-[#BACBB9] pt-2">
-                  <span>01 Oct</span>
-                  <span>05 Oct</span>
-                  <span>10 Oct</span>
-                  <span>15 Oct (Catorcena)</span>
-                  <span>20 Oct</span>
-                  <span>25 Oct</span>
-                  <span>31 Oct</span>
-                </div>
+                {dailyCashFlowData.length > 0 && (
+                  <div className="flex justify-between font-mono text-[10px] text-[#BACBB9] pt-2 overflow-x-auto">
+                    {(() => {
+                      if (dailyCashFlowData.length <= 6) {
+                        return dailyCashFlowData.map((d) => (
+                          <span key={d.date}>{d.dayLabel}</span>
+                        ));
+                      }
+                      const step = (dailyCashFlowData.length - 1) / 5;
+                      const sampled = [0, 1, 2, 3, 4, 5].map((i) =>
+                        dailyCashFlowData[Math.round(i * step)]
+                      );
+                      return sampled.map((d, i) => (
+                        <span key={`${d.date}-${i}`}>{d.dayLabel}</span>
+                      ));
+                    })()}
+                  </div>
+                )}
 
                 <div className="mt-4 bg-[#201F1F] p-3.5 rounded-xl flex items-center justify-between text-xs">
                   <span className="text-[#BACBB9]">
-                    Superávit mensual en curso:{' '}
-                    <strong className="text-[#75FF9E] font-mono">
-                      +GTQ {summary.netCashFlow.toLocaleString('en-US')}.00
+                    Flujo neto en el período:{' '}
+                    <strong
+                      className={`font-mono font-bold ${
+                        computedMetrics.netCashFlow >= 0
+                          ? 'text-[#75FF9E]'
+                          : 'text-[#FFB3AE]'
+                      }`}
+                    >
+                      {computedMetrics.netCashFlow >= 0 ? '+' : ''}GTQ{' '}
+                      {computedMetrics.netCashFlow.toLocaleString('es-GT', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </strong>
                   </span>
                   <span className="font-mono text-[#BACBB9]">
-                    Ratio Ahorro: {summary.savingsRate}%
+                    Ratio Ahorro: {computedMetrics.savingsRate}%
                   </span>
                 </div>
               </div>
@@ -3779,6 +3789,7 @@ export default function App() {
             </div>
 
             <div className="bg-[#1C1B1B] border border-white/5 rounded-2xl p-6 space-y-4">
+              {/* Row 1: Search & Dropdowns */}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="relative flex-1 min-w-[240px]">
                   <Search className="w-4 h-4 text-[#BACBB9] absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -3787,10 +3798,21 @@ export default function App() {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Buscar por comercio, nota, cuenta o categoría..."
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#252525] text-xs text-white placeholder-[#BACBB9]/60 border border-white/5 focus:border-[#00E676] focus:outline-none"
+                    className="w-full pl-10 pr-9 py-2.5 rounded-xl bg-[#252525] text-xs text-white placeholder-[#BACBB9]/60 border border-white/5 focus:border-[#00E676] focus:outline-none"
                   />
+                  {searchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchTerm('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#BACBB9] hover:text-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Account Selector */}
                   <select
                     value={selectedAccountFilter}
                     onChange={(e) => setSelectedAccountFilter(e.target.value)}
@@ -3803,11 +3825,180 @@ export default function App() {
                       </option>
                     ))}
                   </select>
+
+                  {/* Category Selector */}
+                  <select
+                    value={filterCategory}
+                    onChange={(e) => setFilterCategory(e.target.value)}
+                    className="bg-[#252525] text-xs text-white px-3 py-2.5 rounded-xl border border-white/5 focus:outline-none"
+                  >
+                    <option value="all">Todas las Categorías</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Transaction Type Selector */}
+                  <select
+                    value={filterTxType}
+                    onChange={(e) =>
+                      setFilterTxType(
+                        e.target.value as 'all' | 'expense' | 'income' | 'transfer'
+                      )
+                    }
+                    className="bg-[#252525] text-xs text-white px-3 py-2.5 rounded-xl border border-white/5 focus:outline-none"
+                  >
+                    <option value="all">Todos los Tipos</option>
+                    <option value="expense">Solo Gastos</option>
+                    <option value="income">Solo Ingresos</option>
+                    <option value="transfer">Solo Transferencias</option>
+                  </select>
                 </div>
               </div>
 
+              {/* Row 2: Period Filter Selector Pills & Active Filters Reset */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPeriodFilterMode('fullPeriod')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                      periodFilterMode === 'fullPeriod'
+                        ? 'bg-[#00E676] text-[#003918] font-bold'
+                        : 'bg-[#252525] text-[#BACBB9] hover:text-white'
+                    }`}
+                  >
+                    Período Actual ({FinancialPeriodHelper.formatShortRange(fullPeriodRange)})
+                  </button>
+                  {userSettings.enableSplitPeriod && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setPeriodFilterMode('firstHalf')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                          periodFilterMode === 'firstHalf'
+                            ? 'bg-[#00DCF5] text-[#00363D] font-bold'
+                            : 'bg-[#252525] text-[#BACBB9] hover:text-white'
+                        }`}
+                      >
+                        1ra Mitad
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPeriodFilterMode('secondHalf')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                          periodFilterMode === 'secondHalf'
+                            ? 'bg-[#00DCF5] text-[#00363D] font-bold'
+                            : 'bg-[#252525] text-[#BACBB9] hover:text-white'
+                        }`}
+                      >
+                        2da Mitad
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setPeriodFilterMode('custom')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                      periodFilterMode === 'custom'
+                        ? 'bg-[#75FF9E] text-[#003918] font-bold'
+                        : 'bg-[#252525] text-[#BACBB9] hover:text-white'
+                    }`}
+                  >
+                    Personalizado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPeriodFilterMode('all')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                      periodFilterMode === 'all'
+                        ? 'bg-white/20 text-white font-bold'
+                        : 'bg-[#252525] text-[#BACBB9] hover:text-white'
+                    }`}
+                  >
+                    Todo el Historial
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-3 text-xs text-[#BACBB9]">
+                  <span>
+                    Mostrando <strong className="text-white">{filteredTransactions.length}</strong> de {transactions.length} transacciones
+                  </span>
+                  {(selectedAccountFilter !== 'all' ||
+                    filterCategory !== 'all' ||
+                    filterTxType !== 'all' ||
+                    periodFilterMode !== 'fullPeriod' ||
+                    searchTerm.trim() !== '') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAccountFilter('all');
+                        setFilterCategory('all');
+                        setFilterTxType('all');
+                        setPeriodFilterMode('fullPeriod');
+                        setSearchTerm('');
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-[#252525] hover:bg-white/10 text-white font-medium flex items-center gap-1 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5 text-[#FFB3AE]" />
+                      <span>Limpiar filtros</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Custom Date Pickers if custom mode */}
+              {periodFilterMode === 'custom' && (
+                <div className="flex flex-wrap items-center gap-3 p-3 bg-[#201F1F] rounded-xl text-xs border border-white/5">
+                  <span className="text-[#BACBB9] font-medium">Rango de fechas:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[#BACBB9]">Desde:</span>
+                    <input
+                      type="date"
+                      value={customStartIso}
+                      onChange={(e) => setCustomStartIso(e.target.value)}
+                      className="bg-[#2A2A2A] text-white px-2.5 py-1 rounded-lg border border-white/10"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[#BACBB9]">Hasta:</span>
+                    <input
+                      type="date"
+                      value={customEndIso}
+                      onChange={(e) => setCustomEndIso(e.target.value)}
+                      className="bg-[#2A2A2A] text-white px-2.5 py-1 rounded-lg border border-white/10"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="divide-y divide-white/5">
-                {filteredTransactions.map((tx) => {
+                {filteredTransactions.length === 0 ? (
+                  <div className="py-12 flex flex-col items-center justify-center text-center p-6 bg-[#201F1F]/40 rounded-xl border border-dashed border-white/10">
+                    <p className="text-sm font-semibold text-white">
+                      No se encontraron transacciones
+                    </p>
+                    <p className="text-xs text-[#BACBB9] mt-1 max-w-sm">
+                      No hay movimientos que coincidan con los filtros aplicados (cuenta, categoría, tipo, período o texto).
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAccountFilter('all');
+                        setFilterCategory('all');
+                        setFilterTxType('all');
+                        setPeriodFilterMode('fullPeriod');
+                        setSearchTerm('');
+                      }}
+                      className="mt-3 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-white"
+                    >
+                      Restablecer filtros
+                    </button>
+                  </div>
+                ) : (
+                  filteredTransactions.map((tx) => {
                   const isInc = tx.type === 'income';
                   return (
                     <div
@@ -3883,7 +4074,7 @@ export default function App() {
                       </div>
                     </div>
                   );
-                })}
+                }))}
               </div>
             </div>
           </div>
