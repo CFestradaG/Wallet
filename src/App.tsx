@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   onAuthStateChanged,
   signInWithPopup,
@@ -257,6 +257,43 @@ export default function App() {
     setTimeout(() => setStatusBanner(null), 3500);
   };
 
+  const resetDemoState = useCallback(() => {
+    setAccounts(INITIAL_ACCOUNTS_SEED.map((a) => ({ ...a, userId: 'demo' })));
+    setCategories(INITIAL_CATEGORIES_SEED.map((c) => ({ ...c, userId: 'demo' })));
+    setBudgets(INITIAL_BUDGETS_SEED.map((b) => ({ ...b, userId: 'demo' })));
+    setTransactions(INITIAL_TRANSACTIONS_SEED.map((t) => ({ ...t, userId: 'demo' })));
+    setUserSettings(INITIAL_USER_SETTINGS);
+    setSummary({
+      id: 'period_2026_11',
+      userId: 'demo',
+      yearMonth: 'period_2026_11',
+      periodId: 'period_2026_11',
+      totalIncome: 0.0,
+      totalExpense: 0.0,
+      netCashFlow: 0.0,
+      savingsRate: 0.0,
+      currency: 'GTQ',
+    });
+  }, []);
+
+  const clearAuthenticatedState = useCallback(() => {
+    setAccounts([]);
+    setCategories([]);
+    setBudgets([]);
+    setTransactions([]);
+    setSummary({
+      id: 'period_current',
+      userId: currentUser?.uid || 'session',
+      yearMonth: 'period_current',
+      periodId: 'period_current',
+      totalIncome: 0,
+      totalExpense: 0,
+      netCashFlow: 0,
+      savingsRate: 0,
+      currency: 'GTQ',
+    });
+  }, [currentUser]);
+
   const isPermissionDeniedError = (error: unknown): boolean => {
     const msg = error instanceof Error ? error.message : String(error);
     return /Missing or insufficient permissions|PERMISSION_DENIED|permission/i.test(msg);
@@ -268,42 +305,16 @@ export default function App() {
       setCurrentUser(user);
       setAuthReady(true);
       if (user) {
-        // Al iniciar sesión, el usuario real empieza completamente en CERO
-        setTransactions([]);
-        setBudgets([]);
-        setSummary({
-          id: 'period_current',
-          userId: user.uid,
-          yearMonth: 'period_current',
-          periodId: 'period_current',
-          totalIncome: 0,
-          totalExpense: 0,
-          netCashFlow: 0,
-          savingsRate: 0,
-          currency: 'GTQ',
-        });
+        // Aislar la sesión real: no mostrar demo ni datos heredados mientras llega Firestore
+        clearAuthenticatedState();
         await ensureUserSeededInFirestore(user);
       } else {
         // En modo demostración (sin sesión), mostrar CERO datos demo
-        setAccounts(INITIAL_ACCOUNTS_SEED.map((a) => ({ ...a, userId: 'demo' })));
-        setCategories(INITIAL_CATEGORIES_SEED.map((c) => ({ ...c, userId: 'demo' })));
-        setBudgets([]);
-        setTransactions([]);
-        setSummary({
-          id: 'period_2026_11',
-          userId: 'demo',
-          yearMonth: 'period_2026_11',
-          periodId: 'period_2026_11',
-          totalIncome: 0.0,
-          totalExpense: 0.0,
-          netCashFlow: 0.0,
-          savingsRate: 0.0,
-          currency: 'GTQ',
-        });
+        resetDemoState();
       }
     });
     return () => unsub();
-  }, []);
+  }, [clearAuthenticatedState, resetDemoState]);
 
   // 2. Inicializar cuentas y categorías en Firestore para el nuevo usuario
   const ensureUserSeededInFirestore = async (user: User) => {
@@ -390,9 +401,7 @@ export default function App() {
         showToast('¡Bienvenido! Cuentas listas con saldo en Q0.00');
       } else {
         // Limpiar únicamente transacciones de prueba legadas si tuvieran el prefijo tx_seed_
-        const txSnap = await getDocs(
-          query(collection(db, 'users', uid, 'transactions'), where('userId', '==', uid))
-        );
+        const txSnap = await getDocs(collection(db, 'users', uid, 'transactions'));
         const legacySeeds = txSnap.docs.filter((d) => d.id.startsWith('tx_seed_'));
         if (legacySeeds.length > 0) {
           const cleanBatch = writeBatch(db);
@@ -403,9 +412,7 @@ export default function App() {
         }
 
         // Asegurar que las cuentas básicas existan en Firestore para este usuario
-        const accSnap = await getDocs(
-          query(collection(db, 'users', uid, 'accounts'), where('userId', '==', uid))
-        );
+        const accSnap = await getDocs(collection(db, 'users', uid, 'accounts'));
         if (accSnap.empty) {
           const accBatch = writeBatch(db);
           const STARTER_ACCOUNTS = [
@@ -445,9 +452,7 @@ export default function App() {
         }
 
         // Verificar y sincronizar categorías genéricas estándar en Firestore para el perfil del usuario
-        const catSnap = await getDocs(
-          query(collection(db, 'users', uid, 'categories'), where('userId', '==', uid))
-        );
+        const catSnap = await getDocs(collection(db, 'users', uid, 'categories'));
         const existingCatIds = new Set(catSnap.docs.map((d) => d.id));
         const catBatch = writeBatch(db);
         let hasNewCatSeed = false;
@@ -500,10 +505,7 @@ export default function App() {
     if (!authReady || !currentUser) return;
     const uid = currentUser.uid;
 
-    const accountsQ = query(
-      collection(db, 'users', uid, 'accounts'),
-      where('userId', '==', uid)
-    );
+    const accountsQ = collection(db, 'users', uid, 'accounts');
     const unsubAcc = onSnapshot(
       accountsQ,
       (snap) => {
@@ -521,10 +523,7 @@ export default function App() {
         )
     );
 
-    const categoriesQ = query(
-      collection(db, 'users', uid, 'categories'),
-      where('userId', '==', uid)
-    );
+    const categoriesQ = collection(db, 'users', uid, 'categories');
     const unsubCat = onSnapshot(
       categoriesQ,
       (snap) => {
@@ -542,10 +541,7 @@ export default function App() {
         )
     );
 
-    const budgetsQ = query(
-      collection(db, 'users', uid, 'budgets'),
-      where('userId', '==', uid)
-    );
+    const budgetsQ = collection(db, 'users', uid, 'budgets');
     const unsubBud = onSnapshot(
       budgetsQ,
       (snap) => {
@@ -561,10 +557,7 @@ export default function App() {
         )
     );
 
-    const txQ = query(
-      collection(db, 'users', uid, 'transactions'),
-      where('userId', '==', uid)
-    );
+    const txQ = collection(db, 'users', uid, 'transactions');
     const unsubTx = onSnapshot(
       txQ,
       (snap) => {
@@ -704,6 +697,21 @@ export default function App() {
     [periodHelper, referenceDate]
   );
 
+  const getBudgetSpentByCategory = useCallback(
+    (budget: WalletBudget) => {
+      const targetPeriod = budget.period || activeFirestorePeriodId;
+      return transactions
+        .filter(
+          (t) =>
+            t.type === 'expense' &&
+            t.categoryId === budget.categoryId &&
+            (t.periodId === targetPeriod || t.yearMonth === targetPeriod)
+        )
+        .reduce((sum, t) => sum + t.amount, 0);
+    },
+    [transactions, activeFirestorePeriodId]
+  );
+
   // Computed Financial Metrics
   const totalNetBalance = useMemo(
     () =>
@@ -712,6 +720,43 @@ export default function App() {
         0
       ),
     [accounts]
+  );
+
+  const formatMoneyEs = (value: number) =>
+    `${Math.abs(value).toLocaleString('es-GT', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} GTQ`;
+
+  const totalBudgetLimit = useMemo(
+    () =>
+      budgets.reduce(
+        (sum, budget) => sum + Number(budget.limitAmount || 0),
+        0
+      ),
+    [budgets]
+  );
+
+  const periodBudgetSpent = useMemo(
+    () =>
+      budgets.reduce(
+        (sum, budget) => sum + getBudgetSpentByCategory(budget),
+        0
+      ),
+    [budgets, getBudgetSpentByCategory]
+  );
+
+  const periodBudgetUsage = useMemo(
+    () =>
+      totalBudgetLimit > 0
+        ? Math.min(100, Math.round((periodBudgetSpent / totalBudgetLimit) * 100))
+        : 0,
+    [periodBudgetSpent, totalBudgetLimit]
+  );
+
+  const endOfMonthProjection = useMemo(
+    () => Number((totalNetBalance + summary.netCashFlow).toFixed(2)),
+    [totalNetBalance, summary.netCashFlow]
   );
 
   const filteredTransactions = useMemo(() => {
@@ -2515,7 +2560,8 @@ export default function App() {
                       SALDO
                     </span>
                     <span className="text-sm font-bold font-mono tabular-nums text-[#FFB3AE]">
-                      {(totalNetBalance / 1000).toFixed(1)} mil
+                      {totalNetBalance < 0 ? '-' : ''}
+                      {formatMoneyEs(totalNetBalance)}
                     </span>
                   </div>
 
@@ -2553,7 +2599,8 @@ export default function App() {
                       FLUJO DE CAJA
                     </span>
                     <span className="text-sm font-bold font-mono tabular-nums text-[#75FF9E]">
-                      +{(summary.netCashFlow / 1000).toFixed(1)}k GTQ
+                      {computedMetrics.netCashFlow >= 0 ? '+' : '-'}
+                      {formatMoneyEs(computedMetrics.netCashFlow)}
                     </span>
                   </div>
 
@@ -2598,7 +2645,7 @@ export default function App() {
                       GASTOS
                     </span>
                     <span className="text-sm font-bold font-mono tabular-nums text-white">
-                      -{(summary.totalExpense / 1000).toFixed(1)}k GTQ
+                      -{formatMoneyEs(computedMetrics.totalExpense)}
                     </span>
                   </div>
                 </div>
@@ -2608,7 +2655,11 @@ export default function App() {
                     Límite mensual recomendado
                   </span>
                   <span className="font-mono font-bold text-[#75FF9E]">
-                    12,500.00 GTQ
+                    {Math.max(0, budgets.reduce((sum, b) => sum + b.limitAmount, 0) || 0).toLocaleString('es-GT', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}{' '}
+                    GTQ
                   </span>
                 </div>
               </div>
@@ -2643,7 +2694,7 @@ export default function App() {
                       </span>
                     </div>
                     <span className="text-xs font-mono text-[#BACBB9]">
-                      Variación · 0%
+                      {transactions.length > 0 ? 'Variación · en tiempo real' : 'Sin movimientos'}
                     </span>
                   </div>
                 </div>
@@ -2711,7 +2762,8 @@ export default function App() {
                 <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between text-xs text-[#BACBB9]">
                   <span>Proyección fin de mes</span>
                   <span className="text-white font-mono font-semibold">
-                    -4,180.00 GTQ
+                    {endOfMonthProjection >= 0 ? '+' : '-'}
+                    {Math.abs(endOfMonthProjection).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GTQ
                   </span>
                 </div>
               </div>
@@ -2737,8 +2789,7 @@ export default function App() {
                         Este mes
                       </span>
                       <span className="text-2xl font-bold font-mono tabular-nums text-[#FFB3AE]">
-                        -
-                        {summary.totalExpense.toLocaleString('es-GT', {
+                        -{computedMetrics.totalExpense.toLocaleString('es-GT', {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}{' '}
@@ -2746,7 +2797,7 @@ export default function App() {
                       </span>
                     </div>
                     <span className="text-xs font-mono text-[#75FF9E]">
-                      ↓ -12% vs mes ant.
+                      {transactions.length > 0 ? 'En tiempo real' : 'Sin datos'}
                     </span>
                   </div>
                 </div>
@@ -2798,36 +2849,37 @@ export default function App() {
                         Total
                       </span>
                       <span className="text-xs font-bold font-mono text-white">
-                        6.4k
+                        {expenseBreakdown.total > 0
+                          ? expenseBreakdown.total.toLocaleString('es-GT', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })
+                          : '0.00'}
                       </span>
                     </div>
                   </div>
 
                   <div className="col-span-7 space-y-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[#E5E2E1] truncate">
-                        Comida y bebida
-                      </span>
-                      <span className="font-mono font-semibold text-white">
-                        2,700.60 Q
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[#E5E2E1] truncate">
-                        Servicios e Internet
-                      </span>
-                      <span className="font-mono font-semibold text-white">
-                        1,800.40 Q
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[#E5E2E1] truncate">
-                        Transporte y Gas
-                      </span>
-                      <span className="font-mono font-semibold text-white">
-                        964.50 Q
-                      </span>
-                    </div>
+                    {expenseBreakdown.items.length > 0 ? (
+                      expenseBreakdown.items.slice(0, 3).map((item) => (
+                        <div key={item.id} className="flex items-center justify-between gap-3">
+                          <span className="text-[#E5E2E1] truncate">
+                            {item.name}
+                          </span>
+                          <span className="font-mono font-semibold text-white">
+                            {item.amount.toLocaleString('es-GT', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}{' '}
+                            Q
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-xs text-[#BACBB9]">
+                        No hay gastos registrados para este período.
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -2991,22 +3043,22 @@ export default function App() {
                       Presupuesto mensual
                     </h3>
                     <span className="text-xs font-mono font-semibold text-[#75FF9E]">
-                      71% disponible
+                      {Math.max(0, 100 - periodBudgetUsage)}% disponible
                     </span>
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-xs">
                       <span className="text-[#BACBB9]">
-                        Gastado: 1,400.00 GTQ
+                        Gastado: {periodBudgetSpent.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GTQ
                       </span>
                       <span className="text-white font-mono font-semibold">
-                        Meta: 4,800.00 GTQ
+                        Meta: {totalBudgetLimit.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GTQ
                       </span>
                     </div>
                     <div className="w-full h-2.5 rounded-full bg-[#2A2A2A] overflow-hidden">
                       <div
                         className="h-full bg-[#75FF9E] rounded-full transition-all duration-500"
-                        style={{ width: '29%' }}
+                        style={{ width: `${Math.min(100, periodBudgetUsage)}%` }}
                       />
                     </div>
                   </div>
@@ -3016,9 +3068,7 @@ export default function App() {
                         Disponible hoy
                       </span>
                       <span className="text-sm font-bold font-mono tabular-nums text-white mt-0.5 block">
-                        {Math.max(0, totalNetBalance).toLocaleString('es-GT', {
-                          minimumFractionDigits: 2,
-                        })}{' '}
+                        {Math.max(0, totalNetBalance).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
                         GTQ
                       </span>
                     </div>
@@ -3027,66 +3077,10 @@ export default function App() {
                         Días restantes
                       </span>
                       <span className="text-sm font-bold font-mono tabular-nums text-[#75FF9E] mt-0.5 block">
-                        Ciclo Activo
+                        {periodBudgetUsage > 0 ? `${periodBudgetUsage}% usado` : 'Ciclo Activo'}
                       </span>
                     </div>
                   </div>
-                </div>
-
-                {/* Quick Transfer & Card Assistant */}
-                <div className="rounded-xl bg-[#201F1F] border border-white/5 p-6 flex flex-col gap-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <ArrowLeftRight className="w-4 h-4 text-[#75FF9E]" />
-                      <h3 className="text-base font-bold text-white">
-                        Transferencia rápida
-                      </h3>
-                    </div>
-                    <span className="text-[11px] text-[#BACBB9]">
-                      Entre tus cuentas
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 text-xs">
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-[#2A2A2A]">
-                      <span className="text-[#BACBB9]">
-                        Origen: {accounts[0]?.name || 'Efectivo'}
-                      </span>
-                      <span className="font-mono font-semibold text-white">
-                        {(
-                          accounts[0]?.currentBalance ?? accounts[0]?.balance ?? 0
-                        ).toLocaleString('es-GT', {
-                          minimumFractionDigits: 2,
-                        })}{' '}
-                        GTQ
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-[#2A2A2A]">
-                      <span className="text-[#BACBB9]">
-                        Destino: {accounts[1]?.name || 'Cuenta Bancaria'}
-                      </span>
-                      <span className="font-mono font-semibold text-[#75FF9E]">
-                        {(
-                          accounts[1]?.currentBalance ?? accounts[1]?.balance ?? 0
-                        ).toLocaleString('es-GT', {
-                          minimumFractionDigits: 2,
-                        })}{' '}
-                        GTQ
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCalcInitialType('transfer');
-                      setIsCalcOpen(true);
-                    }}
-                    className="w-full py-2.5 px-4 rounded-xl bg-[#353534] hover:bg-[#393939] text-white text-xs font-semibold transition-colors flex items-center justify-center gap-2"
-                  >
-                    <ArrowLeftRight className="w-4 h-4 text-[#75FF9E]" />
-                    <span>Realizar transferencia entre cuentas</span>
-                  </button>
                 </div>
 
                 {/* Smart Liquidity Note */}
@@ -3244,13 +3238,13 @@ export default function App() {
                   </div>
                 </div>
                 <div className="my-3 font-mono tabular-nums text-3xl font-bold text-white">
-                  GTQ {summary.totalExpense.toLocaleString('en-US')}
+                  GTQ {computedMetrics.totalExpense.toLocaleString('es-GT')}
                   <span className="text-lg text-[#BACBB9] font-normal">
                     .00
                   </span>
                 </div>
                 <div className="text-xs text-[#75FF9E]">
-                  ↘ -12% <span className="text-[#BACBB9]">vs. mes anterior</span>
+                  <span className="text-[#BACBB9]">{transactions.length > 0 ? 'Actualizado en tiempo real' : 'Sin movimientos'}</span>
                 </div>
               </div>
 
@@ -3264,13 +3258,13 @@ export default function App() {
                   </div>
                 </div>
                 <div className="my-3 font-mono tabular-nums text-3xl font-bold text-[#75FF9E]">
-                  GTQ {summary.totalIncome.toLocaleString('en-US')}
+                  GTQ {computedMetrics.totalIncome.toLocaleString('es-GT')}
                   <span className="text-lg text-[#75FF9E]/70 font-normal">
                     .00
                   </span>
                 </div>
                 <div className="text-xs text-[#75FF9E]">
-                  ↗ +8% <span className="text-[#BACBB9]">vs. mes anterior</span>
+                  <span className="text-[#BACBB9]">{transactions.length > 0 ? 'Actualizado en tiempo real' : 'Sin movimientos'}</span>
                 </div>
               </div>
 
@@ -3284,14 +3278,14 @@ export default function App() {
                   </div>
                 </div>
                 <div className="my-3 font-mono tabular-nums text-3xl font-bold text-white">
-                  GTQ {(summary.totalExpense / 31).toFixed(0)}
+                  GTQ {((computedMetrics.totalExpense / Math.max(1, new Date().getDate())).toFixed(0))}
                   <span className="text-lg text-[#BACBB9] font-normal">
                     .41
                   </span>
                 </div>
                 <div className="text-xs text-[#BACBB9]">
                   Ritmo proyectado: GTQ{' '}
-                  {summary.totalExpense.toLocaleString('en-US')}
+                  {computedMetrics.totalExpense.toLocaleString('es-GT')}
                 </div>
               </div>
 
@@ -3305,11 +3299,10 @@ export default function App() {
                   </div>
                 </div>
                 <div className="my-3 text-xl font-bold text-white truncate">
-                  Comida y Bebida
+                  {expenseBreakdown.items[0]?.name || 'Sin datos'}
                 </div>
                 <div className="text-xs text-[#FFB3AE]">
-                  ↗ +24%{' '}
-                  <span className="text-[#BACBB9]">sobre la media histórica</span>
+                  <span className="text-[#BACBB9]">{expenseBreakdown.items[0] ? `${expenseBreakdown.items[0].percentage}% del total` : 'Sin movimientos'}</span>
                 </div>
               </div>
             </div>
@@ -3513,70 +3506,46 @@ export default function App() {
                       Total
                     </span>
                     <span className="text-base font-bold font-mono text-white">
-                      GTQ 6.4k
+                      GTQ {expenseBreakdown.total.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     <span className="text-[10px] font-mono text-[#75FF9E]">
-                      100%
+                      {expenseBreakdown.total > 0 ? '100%' : '0%'}
                     </span>
                   </div>
                 </div>
 
                 <div className="space-y-2.5 text-xs">
-                  {[
-                    {
-                      name: 'Comida y Bebida',
-                      sub: 'Restaurantes, compras súper',
-                      amt: 'GTQ 2,700.60',
-                      pct: '42%',
-                      dot: 'bg-[#00E676]',
-                    },
-                    {
-                      name: 'Servicios e Internet',
-                      sub: 'Luz, Agua, Fibra, Celular',
-                      amt: 'GTQ 1,800.40',
-                      pct: '28%',
-                      dot: 'bg-[#00DCF5]',
-                    },
-                    {
-                      name: 'Transporte y Gasolina',
-                      sub: 'Combustible, peajes, parqueo',
-                      amt: 'GTQ 964.50',
-                      pct: '15%',
-                      dot: 'bg-[#FFA8A3]',
-                    },
-                    {
-                      name: 'Entretenimiento',
-                      sub: 'Streaming, salidas de ocio',
-                      amt: 'GTQ 964.50',
-                      pct: '15%',
-                      dot: 'bg-[#A3F1FF]',
-                    },
-                  ].map((item) => (
+                  {(expenseBreakdown.items.length > 0 ? expenseBreakdown.items.slice(0, 4) : []).map((item, index) => (
                     <div
-                      key={item.name}
+                      key={item.id}
                       className="flex items-center justify-between p-2 rounded-lg hover:bg-[#201F1F]"
                     >
                       <div className="flex items-center gap-2.5">
-                        <span className={`w-3 h-3 rounded-full ${item.dot}`} />
+                        <span className={`w-3 h-3 rounded-full ${['bg-[#00E676]', 'bg-[#00DCF5]', 'bg-[#FFA8A3]', 'bg-[#A3F1FF]'][index % 4]}`} />
                         <div>
                           <div className="font-semibold text-white">
                             {item.name}
                           </div>
                           <div className="text-[11px] text-[#BACBB9]">
-                            {item.sub}
+                            {item.count} movimientos
                           </div>
                         </div>
                       </div>
                       <div className="text-right font-mono">
                         <div className="font-semibold text-white">
-                          {item.amt}
+                          GTQ {item.amount.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                         <div className="text-[11px] text-[#75FF9E]">
-                          {item.pct}
+                          {item.percentage.toFixed(1)}%
                         </div>
                       </div>
                     </div>
                   ))}
+                  {expenseBreakdown.items.length === 0 && (
+                    <div className="text-xs text-[#BACBB9] py-2">
+                      No hay gastos registrados para este período.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -3603,11 +3572,12 @@ export default function App() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {budgets.map((b) => {
+                  const actualSpent = getBudgetSpentByCategory(b);
                   const pct = Math.min(
                     100,
-                    Math.round((b.spentAmount / b.limitAmount) * 100)
+                    Math.round((actualSpent / b.limitAmount) * 100)
                   );
-                  const remaining = Math.max(0, b.limitAmount - b.spentAmount);
+                  const remaining = Math.max(0, b.limitAmount - actualSpent);
                   return (
                     <div
                       key={b.id}
@@ -3637,7 +3607,7 @@ export default function App() {
                       <div className="my-4">
                         <div className="flex justify-between items-baseline mb-1.5 text-xs font-mono">
                           <span className="font-bold text-white">
-                            GTQ {b.spentAmount.toFixed(2)}
+                            GTQ {actualSpent.toFixed(2)}
                           </span>
                           <span className="text-[#BACBB9]">
                             de GTQ {b.limitAmount.toFixed(2)}
@@ -3704,54 +3674,9 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5 text-sm">
-                    {[
-                      {
-                        name: 'Comida y Bebida',
-                        sub: 'Supermercados, cafeterías, delivery',
-                        icon: 'utensils',
-                        movs: '24 movs.',
-                        total: 'GTQ 2,700.60',
-                        pct: '42.0%',
-                        rel: 'Q 2.7k / Q 3.2k',
-                        bar: 84,
-                        color: 'bg-[#75FF9E]',
-                      },
-                      {
-                        name: 'Servicios e Internet',
-                        sub: 'Telecomunicaciones y luz eléctrica',
-                        icon: 'wifi',
-                        movs: '6 movs.',
-                        total: 'GTQ 1,800.40',
-                        pct: '28.0%',
-                        rel: 'Q 1.8k / Q 2.0k',
-                        bar: 90,
-                        color: 'bg-[#FFB3AE]',
-                      },
-                      {
-                        name: 'Transporte y Gasolina',
-                        sub: 'Estaciones de servicio y TAG peajes',
-                        icon: 'fuel',
-                        movs: '8 movs.',
-                        total: 'GTQ 964.50',
-                        pct: '15.0%',
-                        rel: 'Q 0.96k / Q 1.5k',
-                        bar: 64,
-                        color: 'bg-[#75FF9E]',
-                      },
-                      {
-                        name: 'Entretenimiento & Suscripciones',
-                        sub: 'Cine, Spotify, eventos culturales',
-                        icon: 'film',
-                        movs: '5 movs.',
-                        total: 'GTQ 964.50',
-                        pct: '15.0%',
-                        rel: 'Q 0.96k / Q 1.2k',
-                        bar: 80,
-                        color: 'bg-[#00DCF5]',
-                      },
-                    ].map((row) => (
+                    {(expenseBreakdown.items.length > 0 ? expenseBreakdown.items : []).map((row) => (
                       <tr
-                        key={row.name}
+                        key={row.id}
                         className="hover:bg-[#201F1F]/60 transition-colors"
                       >
                         <td className="py-3.5 px-4">
@@ -3764,30 +3689,30 @@ export default function App() {
                                 {row.name}
                               </span>
                               <span className="text-xs text-[#BACBB9]">
-                                {row.sub}
+                                {row.count} movs.
                               </span>
                             </div>
                           </div>
                         </td>
                         <td className="py-3.5 px-4 text-xs font-mono text-[#BACBB9]">
-                          {row.movs}
+                          {row.count} movs.
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono font-bold tabular-nums text-white">
-                          {row.total}
+                          GTQ {row.amount.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono text-xs text-[#75FF9E]">
-                          {row.pct}
+                          {row.percentage.toFixed(1)}%
                         </td>
                         <td className="py-3.5 px-4">
                           <div className="w-36">
                             <div className="flex justify-between text-[11px] font-mono text-[#BACBB9] mb-1">
-                              <span>{row.rel}</span>
-                              <span>{row.bar}%</span>
+                              <span>GTQ {row.amount.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <span>{row.percentage.toFixed(1)}%</span>
                             </div>
                             <div className="w-full h-1.5 bg-[#353534] rounded-full overflow-hidden">
                               <div
-                                className={`h-full rounded-full ${row.color}`}
-                                style={{ width: `${row.bar}%` }}
+                                className="h-full rounded-full bg-[#75FF9E]"
+                                style={{ width: `${Math.min(100, row.percentage)}%` }}
                               />
                             </div>
                           </div>
@@ -3804,6 +3729,13 @@ export default function App() {
                         </td>
                       </tr>
                     ))}
+                    {expenseBreakdown.items.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-6 text-center text-xs text-[#BACBB9]">
+                          No hay categorías con gastos en este período.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -4230,10 +4162,7 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 {budgets.map((b) => {
                   const matchingCategory = categories.find((c) => c.id === b.categoryId);
-                  const dynamicSpent = transactions
-                    .filter((t) => t.categoryId === b.categoryId && t.type === 'expense' && (t.periodId === b.period || t.yearMonth === b.period))
-                    .reduce((acc, t) => acc + t.amount, 0);
-                  const displaySpent = dynamicSpent > 0 ? dynamicSpent : b.spentAmount;
+                  const displaySpent = getBudgetSpentByCategory(b);
                   const pct = Math.min(100, Math.round((displaySpent / b.limitAmount) * 100));
 
                   return (
